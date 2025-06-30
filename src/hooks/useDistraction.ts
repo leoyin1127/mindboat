@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useVoyageStore } from '../stores/voyageStore';
 import { useDestinationStore } from '../stores/destinationStore';
 import type { DistractionDetectionEvent, PermissionState } from '../types';
+import { MinDIntegrationAdapter } from '../adapters/MinDIntegrationAdapter';
+
 
 interface UseDistractionProps {
   isExploring?: boolean;
@@ -16,7 +18,9 @@ export const useDistraction = ({ isExploring = false, currentDestination }: UseD
     screen: false
   });
   const [lastDistractionType, setLastDistractionType] = useState<'tab_switch' | 'idle' | 'camera_distraction'>('tab_switch');
-  
+  const [visualState, setVisualState] = useState<'focused' | 'distracted' | 'exploring'>('focused');
+  const [distractionAlerts, setDistractionAlerts] = useState<string[]>([]);
+
   // Refs to track current state values without causing re-renders
   const isDistractedRef = useRef(isDistracted);
   const lastDistractionTypeRef = useRef(lastDistractionType);
@@ -459,6 +463,37 @@ export const useDistraction = ({ isExploring = false, currentDestination }: UseD
     }
   }, []);
 
+  const handleDistraction = useCallback(async (event: DistractionEvent) => {
+    setIsDistracted(true);
+    setVisualState('distracted');
+    
+    // Record to backend using adapter
+    await MinDIntegrationAdapter.controlPanelAdapters.recordDistraction(event);
+    
+    // Add visual alert for min-d UI
+    const alertMessage = getDistractionMessage(event.type);
+    setDistractionAlerts(prev => [...prev, alertMessage]);
+    
+    // Clear alert after 5 seconds
+    setTimeout(() => {
+      setDistractionAlerts(prev => prev.filter(alert => alert !== alertMessage));
+    }, 5000);
+  }, []);
+  
+  // ADD THIS HELPER FUNCTION
+  const getDistractionMessage = (type: DistractionEvent['type']): string => {
+    switch (type) {
+      case 'tab_switch':
+        return 'The captain is yawing! Do you want to go back?';
+      case 'idle':
+        return 'Ship has been idle. Ready to continue sailing?';
+      case 'camera_distraction':
+        return 'Attention detected elsewhere. Return to your voyage?';
+      default:
+        return 'Distraction detected. Stay focused on your journey.';
+    }
+  };
+
   const handleDistractionResponse = useCallback(async (response: 'return_to_course' | 'exploring') => {
     debugLog('Handling distraction response', response);
     
@@ -486,5 +521,19 @@ export const useDistraction = ({ isExploring = false, currentDestination }: UseD
     lastDistractionType,
     requestPermissions,
     handleDistractionResponse,
+    visualState,
+    distractionAlerts,
+    clearAlert: (alertIndex: number) => {
+      setDistractionAlerts(prev => prev.filter((_, index) => index !== alertIndex));
+    },
+    enterExplorationMode: async () => {
+      setVisualState('exploring');
+      await MinDIntegrationAdapter.controlPanelAdapters.enterExplorationMode();
+    },
+    returnToFocus: async () => {
+      setVisualState('focused');
+      setIsDistracted(false);
+      await MinDIntegrationAdapter.controlPanelAdapters.returnToFocus();
+    }
   };
 };

@@ -1,36 +1,38 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { designSystem, getPanelStyle } from '../../styles/designSystem';
 
 interface CardProps {
   children: React.ReactNode;
   className?: string;
-  hover?: boolean;
+  blur?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl';
   onClick?: () => void;
+  hover?: boolean;
 }
 
 export const Card: React.FC<CardProps> = ({
   children,
   className = '',
-  hover = false,
+  blur = '2xl',
   onClick,
+  hover = false,
 }) => {
-  const Component = onClick ? motion.div : 'div';
+  const panelStyle = getPanelStyle(blur);
   
   return (
-    <Component
-      className={`
-        bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden
-        ${hover ? 'cursor-pointer' : ''}
-        ${className}
-      `}
+    <motion.div
       onClick={onClick}
-      {...(onClick && {
-        whileHover: { scale: 1.02, y: -2 },
-        whileTap: { scale: 0.98 },
-        transition: { type: 'spring', stiffness: 400, damping: 17 }
-      })}
+      className={`${panelStyle} ${className} ${onClick ? 'cursor-pointer' : ''}`}
+      whileHover={hover ? { scale: 1.02 } : {}}
+      transition={{ duration: 0.2 }}
     >
-      {children}
-    </Component>
+      {/* Inner glow overlay */}
+      <div className={designSystem.patterns.innerGlow}></div>
+      
+      {/* Content */}
+      <div className="relative z-10">
+        {children}
+      </div>
+    </motion.div>
   );
 };

@@ -17,7 +17,9 @@
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.20.1",
     "tone": "^14.7.77",
-    "zustand": "^4.4.7"
+    "zustand": "^4.4.7",
+    "@splinetool/react-spline": "^2.2.6",
+    "@splinetool/runtime": "^0.9.515"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",

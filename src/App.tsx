@@ -1,257 +1,238 @@
-import React, { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthForm } from './components/auth/AuthForm';
-import { LighthouseGoal } from './components/onboarding/LighthouseGoal';
-import { CreateDestination } from './components/onboarding/CreateDestination';
-import { VoyagePreparation } from './components/sailing/VoyagePreparation';
-import { SailingMode } from './components/sailing/SailingMode';
-import { VoyageComplete } from './components/sailing/VoyageComplete';
-import { GrandMap } from './components/visualization/GrandMap';
-import { NotificationSystem } from './components/ui/NotificationSystem';
-import { useUserStore } from './stores/userStore';
-import { useDestinationStore } from './stores/destinationStore';
-import { useVoyageStore } from './stores/voyageStore';
-import { useNotificationStore } from './stores/notificationStore';
-import type { Destination } from './types';
-import { setupDebugTool } from './utils/debugDistraction';
+import React, { useState, useEffect } from 'react';
+import { AnimatePresence } from 'framer-motion';
+import { SplineScene } from './components/SplineScene';
+import { SplineEventHandler } from './components/SplineEventHandler';
+import { LifeGoalsModal } from './components/LifeGoalsModal';
+import { WelcomeModal } from './components/WelcomeModal';
+import { WelcomePanel } from './components/WelcomePanel';
+import { JourneyPanel } from './components/JourneyPanel';
+import { ControlPanel } from './components/ControlPanel';
+import { SailingSummaryPanel } from './components/SailingSummaryPanel';
 
-type AppState = 'auth' | 'lighthouse' | 'destinations' | 'voyage-prep' | 'sailing' | 'voyage-complete' | 'map';
+// Import existing MindBoat services
+import { UserService } from './services/UserService';
+import { VoyageService } from './services/VoyageService';
+
+interface SailingSummaryData {
+  imageUrl: string;
+  summaryText: string;
+  sessionData?: any;
+}
 
 function App() {
-  const {
-    user,
-    lighthouseGoal,
-    initialize,
-    debugDistractionFlow,
-    isLoading,
-    isAuthenticated,
-    authMode,
-    error: authError
-  } = useUserStore();
+  // Modal and panel state management
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false);
+  const [showLifeGoalsModal, setShowLifeGoalsModal] = useState(false);
+  const [showWelcomePanel, setShowWelcomePanel] = useState(false);
+  const [showJourneyPanel, setShowJourneyPanel] = useState(false);
+  const [showControlPanel, setShowControlPanel] = useState(false);
+  const [showSummaryPanel, setShowSummaryPanel] = useState(false);
+  
+  // Summary data state
+  const [summaryData, setSummaryData] = useState<SailingSummaryData | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
 
-  const { destinations, loadDestinations } = useDestinationStore();
-  const { currentVoyage, voyageHistory, startVoyage, endVoyage } = useVoyageStore();
-  const { showSuccess, showError } = useNotificationStore();
+  // Check if any modal or panel is open (for Spline interaction blocking)
+  const hasOpenUI = showWelcomeModal || showLifeGoalsModal || showWelcomePanel || 
+                   showJourneyPanel || showControlPanel || showSummaryPanel;
 
-  const [appState, setAppState] = useState<AppState>('auth');
-  const [selectedDestination, setSelectedDestination] = useState<Destination | null>(null);
-  const [completedVoyageId, setCompletedVoyageId] = useState<string | null>(null);
-  const [initializationComplete, setInitializationComplete] = useState(false);
-
-  // Initialize the app
+  // Initialize app state
   useEffect(() => {
-    const initApp = async () => {
-      await initialize();
-      setInitializationComplete(true);
+    // Check if user has completed onboarding
+    const checkUserState = async () => {
+      try {
+        const userProfile = await UserService.getCurrentUser();
+        if (!userProfile?.lighthouse_goal) {
+          // New user - show welcome modal
+          setShowWelcomeModal(true);
+        }
+      } catch (error) {
+        console.error('Failed to check user state:', error);
+        setShowWelcomeModal(true);
+      }
     };
 
-    initApp();
-  }, [initialize]);
+    checkUserState();
+  }, []);
 
-  // Debug
-  useEffect(() => {
-    if (import.meta.env.DEV) {
-      setupDebugTool();
-    }
-  }, [debugDistractionFlow]);
-
-  // Handle state transitions after initialization
-  useEffect(() => {
-    if (!initializationComplete) return;
-
-    if (isAuthenticated && user) {
-      // Only show welcome notification for non-demo mode and don't repeat
-      if (authMode === 'supabase' && !localStorage.getItem('welcome-shown')) {
-        showSuccess(
-          `Welcome back, ${user.email}!`,
-          'Successfully signed in'
-        );
-        localStorage.setItem('welcome-shown', 'true');
-      }
-
-      // Load user data
-      if (authMode === 'supabase') {
-        loadDestinations(user.id);
-      }
-
-      // Determine app state based on user progress and current voyage
-      if (!lighthouseGoal) {
-        setAppState('lighthouse');
-      } else if (currentVoyage && appState !== 'sailing') {
-        // If there's an active voyage and we're not already in sailing mode
-        setAppState('sailing');
-      } else if (appState === 'auth') {
-        // Only set to voyage-prep if we're coming from auth
-        setAppState('voyage-prep');
-      }
-    } else {
-      setAppState('auth');
-    }
-  }, [isAuthenticated, user, lighthouseGoal, currentVoyage, authMode, initializationComplete]);
-
-  // Show auth errors as notifications (keep this as it's important)
-  useEffect(() => {
-    if (authError && initializationComplete) {
-      showError(authError, 'Authentication Error');
-    }
-  }, [authError, initializationComplete, showError]);
-
-  // Show loading screen during initialization
-  if (!initializationComplete || isLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-900 to-indigo-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <div className="text-white text-xl">
-            {isLoading ? 'Loading...' : 'Initializing MindBoat...'}
-          </div>
-          {authError && (
-            <div className="mt-4 text-red-300 text-sm max-w-md">
-              {authError}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  const handleAuthSuccess = () => {
-    if (!lighthouseGoal) {
-      setAppState('lighthouse');
-    } else {
-      setAppState('voyage-prep');
-    }
+  // Spline event handlers
+  const handleWelcomeEvent = () => {
+    setShowWelcomePanel(true);
   };
 
-  const handleLighthouseComplete = () => {
-    // Remove success notification - completing the form is its own reward
-
-    // Skip destinations if user already has some, go straight to voyage prep
-    if (destinations.length > 0) {
-      setAppState('voyage-prep');
-    } else {
-      setAppState('destinations');
-    }
+  const handleJourneyEvent = () => {
+    setShowJourneyPanel(true);
   };
 
-  const handleDestinationsComplete = () => {
-    // Remove success notification - creating destinations is self-evident
-    setAppState('voyage-prep');
+  const handleGoalsEvent = () => {
+    setShowLifeGoalsModal(true);
   };
 
-  const handleStartVoyage = async (destination: Destination, plannedDuration: number) => {
-    if (!user) return;
-
-    setSelectedDestination(destination);
-
+  const handleSailingSummaryEvent = async (data: any) => {
+    setSummaryLoading(true);
+    setShowSummaryPanel(true);
+    
     try {
-      // Start the voyage in the store
-      await startVoyage(destination.id, user.id, plannedDuration);
-
-      // Remove verbose success notification - starting voyage is self-evident
-
-      // Transition to sailing mode
-      setAppState('sailing');
+      // Connect to existing summary generation service
+      const summary = await VoyageService.generateSummary(data);
+      setSummaryData(summary);
     } catch (error) {
-      console.error('Failed to start voyage:', error);
-      showError(
-        'Failed to start your voyage. Please try again.',
-        'Voyage Error'
-      );
+      console.error('Failed to generate summary:', error);
+      setSummaryData(null);
+    } finally {
+      setSummaryLoading(false);
     }
+  };
+
+  // Modal/Panel handlers
+  const handleWelcomeModalComplete = () => {
+    setShowWelcomeModal(false);
+    setShowLifeGoalsModal(true);
+  };
+
+  const handleLifeGoalsSubmit = async (goal: string) => {
+    try {
+      await UserService.setLighthouseGoal(goal);
+      setShowLifeGoalsModal(false);
+      setShowWelcomePanel(true);
+    } catch (error) {
+      console.error('Failed to save lighthouse goal:', error);
+    }
+  };
+
+  const handleWelcomePanelComplete = () => {
+    setShowWelcomePanel(false);
+    setShowJourneyPanel(true);
+  };
+
+  const handleStartControlPanel = () => {
+    setShowJourneyPanel(false);
+    setShowControlPanel(true);
   };
 
   const handleEndVoyage = async () => {
-    if (currentVoyage && selectedDestination) {
-      // Capture distraction count before ending voyage (since endVoyage resets store state)
-      const { distractionCount } = useVoyageStore.getState();
-
-      try {
-        // End the voyage in the store
-        const updatedVoyage = await endVoyage();
-
-        // Remove verbose success notification - voyage completion is self-evident
-
-        // Set completed voyage data for the completion screen
-        if (updatedVoyage) {
-          setCompletedVoyageId(updatedVoyage.id);
-        } else {
-          // Fallback: use current voyage ID
-          setCompletedVoyageId(currentVoyage.id);
-        }
-
-        // Transition to voyage complete screen
-        setAppState('voyage-complete');
-      } catch (error) {
-        console.error('Failed to end voyage:', error);
-        showError(
-          'Failed to complete your voyage. Please try again.',
-          'Voyage Error'
-        );
-      }
+    setShowControlPanel(false);
+    setSummaryLoading(true);
+    setShowSummaryPanel(true);
+    
+    try {
+      // Generate summary using existing service
+      const summary = await VoyageService.generateVoyageSummary();
+      setSummaryData(summary);
+    } catch (error) {
+      console.error('Failed to generate voyage summary:', error);
+      setSummaryData(null);
+    } finally {
+      setSummaryLoading(false);
     }
   };
 
-  const handleVoyageCompleteNext = () => {
-    setAppState('map');
+  const handleSummaryClose = () => {
+    setShowSummaryPanel(false);
+    setSummaryData(null);
+    setShowJourneyPanel(true); // Return to journey panel
   };
 
-  const handleBackToPrep = () => {
-    setSelectedDestination(null);
-    setCompletedVoyageId(null);
-    setAppState('voyage-prep');
-  };
-
-  const handleViewMap = () => {
-    setAppState('map');
-  };
-
-  const handleManageDestinations = () => {
-    setAppState('destinations');
+  const closeAllPanels = () => {
+    setShowWelcomePanel(false);
+    setShowJourneyPanel(false);
+    setShowControlPanel(false);
+    setShowSummaryPanel(false);
   };
 
   return (
-    <div className="App">
-      {appState === 'auth' && (
-        <AuthForm onSuccess={handleAuthSuccess} />
-      )}
+    <div className="relative w-full h-screen overflow-hidden">
+      
+      {/* 3D Ocean Background */}
+      <SplineScene
+        className="absolute inset-0"
+        disableInteractions={hasOpenUI}
+        onLoad={() => console.log('Spline scene loaded')}
+        onError={(error) => console.error('Spline error:', error)}
+      />
 
-      {appState === 'lighthouse' && (
-        <LighthouseGoal onComplete={handleLighthouseComplete} />
-      )}
+      {/* Spline Event Handler */}
+      <SplineEventHandler
+        onWelcomeEvent={handleWelcomeEvent}
+        onJourneyEvent={handleJourneyEvent}
+        onGoalsEvent={handleGoalsEvent}
+        onSailingSummaryEvent={handleSailingSummaryEvent}
+      />
 
-      {appState === 'destinations' && (
-        <CreateDestination onComplete={handleDestinationsComplete} />
-      )}
-
-      {appState === 'voyage-prep' && (
-        <VoyagePreparation
-          onStartVoyage={handleStartVoyage}
-          onViewMap={handleViewMap}
-          onManageDestinations={handleManageDestinations}
+      {/* Modals */}
+      <AnimatePresence>
+        <WelcomeModal
+          isOpen={showWelcomeModal}
+          onClose={() => setShowWelcomeModal(false)}
+          onGetStarted={handleWelcomeModalComplete}
         />
-      )}
 
-      {appState === 'sailing' && selectedDestination && (
-        <SailingMode
-          destination={selectedDestination}
-          onEndVoyage={handleEndVoyage}
+        <LifeGoalsModal
+          isOpen={showLifeGoalsModal}
+          onClose={() => setShowLifeGoalsModal(false)}
+          onSubmit={handleLifeGoalsSubmit}
         />
-      )}
 
-      {appState === 'voyage-complete' && completedVoyageId && (
-        <VoyageComplete
-          voyageId={completedVoyageId}
-          onContinue={handleVoyageCompleteNext}
+        <SailingSummaryPanel
+          isVisible={showSummaryPanel}
+          summaryData={summaryData}
+          isLoading={summaryLoading}
+          onClose={handleSummaryClose}
+          onViewDiary={() => {
+            // TODO: Implement diary view
+            console.log('View diary clicked');
+          }}
         />
-      )}
+      </AnimatePresence>
 
-      {appState === 'map' && (
-        <GrandMap onBack={handleBackToPrep} />
-      )}
+      {/* Side Panels */}
+      <AnimatePresence>
+        <WelcomePanel
+          isVisible={showWelcomePanel}
+          onComplete={handleWelcomePanelComplete}
+          onClose={closeAllPanels}
+        />
 
-      {/* Global Notification System */}
-      <NotificationSystem />
+        <JourneyPanel
+          isVisible={showJourneyPanel}
+          onClose={closeAllPanels}
+          onStartControlPanel={handleStartControlPanel}
+          onShowSummary={(data) => {
+            setSummaryData(data);
+            setShowSummaryPanel(true);
+          }}
+        />
+      </AnimatePresence>
+
+      {/* Floating Controls */}
+      <ControlPanel
+        isVisible={showControlPanel}
+        onEndVoyage={handleEndVoyage}
+      />
+
+      {/* Development tools - remove in production */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="fixed top-4 left-4 space-y-2 z-50">
+          <button
+            onClick={() => setShowWelcomeModal(true)}
+            className="block px-3 py-1 bg-white/10 text-white text-xs rounded"
+          >
+            Welcome Modal
+          </button>
+          <button
+            onClick={() => setShowLifeGoalsModal(true)}
+            className="block px-3 py-1 bg-white/10 text-white text-xs rounded"
+          >
+            Goals Modal
+          </button>
+          <button
+            onClick={() => setShowJourneyPanel(true)}
+            className="block px-3 py-1 bg-white/10 text-white text-xs rounded"
+          >
+            Journey Panel
+          </button>
+        </div>
+      )}
     </div>
   );
 }
