@@ -8,12 +8,14 @@
  * 4. Activity and idle monitoring
  * 
  * All detection methods work together to provide comprehensive distraction monitoring.
+ * Detection results are stored in Supabase regardless of whether distraction is detected.
  */
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useVoyageStore } from '../stores/voyageStore';
 import { useUserStore } from '../stores/userStore';
 import { GeminiService } from '../services/GeminiService';
+import { DetectionResultService } from '../services/DetectionResultService';
 import {
   DISTRACTION_BLACKLIST,
   PRODUCTIVITY_WHITELIST
@@ -92,9 +94,10 @@ export const useAdvancedDistraction = ({
 
   const hasTriggeredDistractionRef = useRef(false);
 
-  const { isVoyageActive, recordDistraction } = useVoyageStore(state => ({
+  const { isVoyageActive, recordDistraction, currentVoyage } = useVoyageStore(state => ({
     isVoyageActive: state.isVoyageActive,
     recordDistraction: state.recordDistraction,
+    currentVoyage: state.currentVoyage,
   }));
   const { user } = useUserStore();
 
@@ -160,6 +163,7 @@ export const useAdvancedDistraction = ({
     if (!shouldMonitor) return;
 
     const isHidden = document.hidden;
+    const currentTime = Date.now();
 
     debugLog('TAB_SWITCH', 'Visibility change detected', {
       hidden: isHidden,
@@ -168,6 +172,17 @@ export const useAdvancedDistraction = ({
       voyageActive: isVoyageActive,
       exploring: isExploringRef.current
     });
+
+    // Store tab switch detection result regardless of distraction
+    if (currentVoyage && user) {
+      DetectionResultService.storeTabSwitchDetection({
+        voyageId: currentVoyage.id,
+        userId: user.id,
+        detected: isHidden,
+        visibilityState: document.visibilityState,
+        timestamp: new Date(currentTime),
+      });
+    }
 
     if (isHidden) {
       // Tab became hidden - user switched away
@@ -210,6 +225,19 @@ export const useAdvancedDistraction = ({
         timeAway: tabSwitchState.startTime ?
           `${Math.round((Date.now() - tabSwitchState.startTime) / 1000)}s` : 'N/A'
       });
+
+      // Store return-to-tab detection result
+      if (currentVoyage && user && tabSwitchState.startTime) {
+        const duration = currentTime - tabSwitchState.startTime;
+        DetectionResultService.storeTabSwitchDetection({
+          voyageId: currentVoyage.id,
+          userId: user.id,
+          detected: false, // User returned
+          durationMs: duration,
+          visibilityState: document.visibilityState,
+          timestamp: new Date(currentTime),
+        });
+      }
 
       // Clear timeout if user returned quickly
       if (distractionTimeoutRef.current) {
@@ -280,7 +308,7 @@ export const useAdvancedDistraction = ({
         checkUrlChange();
       }, 100);
     }
-  }, [isVoyageActive, recordDistraction, debugLog]);
+  }, [isVoyageActive, recordDistraction, debugLog, currentVoyage, user]);
 
   // URL checking for blacklisted/irrelevant content
   const checkUrlChange = useCallback(() => {
@@ -404,7 +432,7 @@ export const useAdvancedDistraction = ({
     }, 90000);
   }, [isVoyageActive, checkUrlChange, debugLog]);
 
-  // Combined screenshot + camera analysis
+  // Combined screenshot + camera analysis with result storage
   const performCombinedAnalysis = useCallback(async () => {
     if (!isVoyageActive || isExploringRef.current) return;
 
@@ -438,8 +466,20 @@ export const useAdvancedDistraction = ({
         destinationRef.current?.related_apps || []
       );
 
-      if (analysis) {
+      if (analysis && currentVoyage && user) {
         const currentTime = Date.now();
+
+        // 🔧 STORE DETECTION RESULT REGARDLESS OF DISTRACTION
+        await DetectionResultService.storeCombinedDetection({
+          voyageId: currentVoyage.id,
+          userId: user.id,
+          analysisResult: analysis,
+          confidenceLevel: analysis.confidenceLevel,
+          distractionDetected: !analysis.contentRelevant || 
+            (cameraStream && analysis.cameraAnalysis &&
+            (!analysis.cameraAnalysis.personPresent || !analysis.cameraAnalysis.appearsFocused)),
+          distractionType: analysis.distractionType,
+        });
 
         // Check if distraction detected
         const isContentIrrelevant = !analysis.contentRelevant;
@@ -509,8 +549,10 @@ export const useAdvancedDistraction = ({
         ...prev,
         error: error instanceof Error ? error.message : 'Analysis failed'
       }));
+    } finally {
+      setCombinedState(prev => ({ ...prev, isActive: false }));
     }
-  }, [isVoyageActive, cameraStream, currentDestination, recordDistraction, debugLog]);
+  }, [isVoyageActive, cameraStream, currentDestination, recordDistraction, debugLog, currentVoyage, user]);
 
   // Set up all monitoring systems
   useEffect(() => {
