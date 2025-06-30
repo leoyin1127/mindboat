@@ -34,6 +34,11 @@ export interface Voyage {
   voice_recording_enabled?: boolean;
   total_transcript_duration?: number; // seconds
   transcript_confidence_avg?: number;
+  // Millisecond precision fields
+  planned_duration_ms?: number; // milliseconds
+  actual_duration_ms?: number; // milliseconds
+  start_time_precise_ms?: number; // milliseconds since epoch
+  precision_level?: 'millisecond' | 'second' | 'minute';
 }
 
 export interface DistractionEvent {
