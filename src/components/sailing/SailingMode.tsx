@@ -71,6 +71,9 @@ export const SailingMode: React.FC<SailingModeProps> = ({ destination, onEndVoya
       }
     } else {
       setIsExploring(false);
+      // Always set weather to sunny when returning to course
+      setWeatherMood('sunny');
+      setAudioWeatherMood('sunny');
     }
   }, [weatherMood]);
 
@@ -295,9 +298,18 @@ export const SailingMode: React.FC<SailingModeProps> = ({ destination, onEndVoya
     // Clear the distraction alert immediately when user responds
     setShowDistractionAlert(false);
 
+    // Update weather immediately based on choice
+    if (choice === 'return_to_course') {
+      setWeatherMood('sunny');
+      setAudioWeatherMood('sunny');
+    } else if (choice === 'exploring') {
+      setWeatherMood('cloudy');
+      setAudioWeatherMood('cloudy');
+    }
+
     await handleDistractionResponse(choice);
     await handleDistractionChoice(choice);
-  }, [handleDistractionResponse, handleDistractionChoice]);
+  }, [handleDistractionResponse, handleDistractionChoice, setAudioWeatherMood]);
 
   // Handle camera stream changes
   const handleCameraStream = useCallback((stream: MediaStream | null) => {
@@ -570,18 +582,6 @@ export const SailingMode: React.FC<SailingModeProps> = ({ destination, onEndVoya
                         </div>
                       </div>
                     </div>
-
-                    {/* Voice Recording Controls */}
-                    <div className="col-span-2 border-t pt-4">
-                      <VoiceRecordingControls
-                        voyageId={currentVoyage?.id || ''}
-                        isVoyageActive={!!currentVoyage}
-                        onRecordingToggle={(isRecording) => {
-                          // Handle recording toggle - optional visual feedback
-                          console.log('Voice recording toggled:', isRecording);
-                        }}
-                      />
-                    </div>
                   </div>
                 </div>
 
@@ -597,6 +597,18 @@ export const SailingMode: React.FC<SailingModeProps> = ({ destination, onEndVoya
                     </div>
                   </div>
                 )}
+
+                {/* Voice Recording Controls */}
+                <div className="col-span-2 border-t pt-4">
+                  <VoiceRecordingControls
+                    voyageId={currentVoyage?.id || ''}
+                    isVoyageActive={!!currentVoyage}
+                    onRecordingToggle={(isRecording) => {
+                      // Handle recording toggle - optional visual feedback
+                      console.log('Voice recording toggled:', isRecording);
+                    }}
+                  />
+                </div>
 
                 <div className="border-t pt-4">
                   <Button
