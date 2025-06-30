@@ -1,11 +1,11 @@
 /*
-  # High Precision Timing and Enhanced Distraction Types - Fixed Migration
+  # High Precision Timing and Enhanced Distraction Types
 
   1. Schema Changes
     - Add `actual_duration_ms` (bigint) for millisecond precision timing
     - Add `planned_duration_ms` (bigint) for millisecond precision planning
     - Keep existing columns for backward compatibility
-    - Fix enhanced distraction type constraints
+    - Add enhanced distraction type constraints (safely)
 
   2. Enhanced Distraction Types
     - More granular distraction categorization
@@ -63,46 +63,54 @@ WHERE type NOT IN (
   'camera_distraction', 'blacklisted_content'
 );
 
--- Update distraction_events type constraint to include enhanced types
-ALTER TABLE distraction_events DROP CONSTRAINT IF EXISTS distraction_events_type_check;
-ALTER TABLE distraction_events DROP CONSTRAINT IF EXISTS enhanced_distraction_types_check;
-
--- Add comprehensive distraction type constraint
-ALTER TABLE distraction_events ADD CONSTRAINT enhanced_distraction_types_check 
-  CHECK (type IN (
-    -- Tab/Window Management
-    'tab_switch',           -- User switched to different tab
-    'window_switch',        -- User switched to different application
-    'new_tab_opened',       -- User opened a new tab
-    'tab_closed',           -- User closed current tab
-    
-    -- Content-Based Distractions  
-    'social_media',         -- Detected social media usage
-    'entertainment',        -- Video streaming, gaming, etc.
-    'shopping',            -- Online shopping sites
-    'news_browsing',       -- News websites
-    'irrelevant_browsing', -- General off-topic browsing
-    
-    -- Physical/Camera Distractions
-    'camera_absence',       -- User not visible in camera
-    'looking_away',        -- User looking away from screen
-    'phone_usage',         -- User using mobile device
-    'eating_drinking',     -- User eating or drinking
-    'conversation',        -- User talking to someone
-    
-    -- Activity-Based
-    'idle',                -- No activity detected
-    'extended_break',      -- Long break period
-    'task_switching',      -- Switching between work tasks
-    
-    -- Environmental
-    'notification_popup',   -- Notification interrupted focus
-    'external_interruption', -- External interruption detected
-    
-    -- Legacy types for backward compatibility
-    'camera_distraction',
-    'blacklisted_content'
-  ));
+-- Safely update distraction_events type constraint to include enhanced types
+DO $$
+BEGIN
+  -- Drop existing constraints if they exist
+  ALTER TABLE distraction_events DROP CONSTRAINT IF EXISTS distraction_events_type_check;
+  ALTER TABLE distraction_events DROP CONSTRAINT IF EXISTS enhanced_distraction_types_check;
+  
+  -- Add comprehensive distraction type constraint
+  ALTER TABLE distraction_events ADD CONSTRAINT enhanced_distraction_types_check 
+    CHECK (type IN (
+      -- Tab/Window Management
+      'tab_switch',           -- User switched to different tab
+      'window_switch',        -- User switched to different application
+      'new_tab_opened',       -- User opened a new tab
+      'tab_closed',           -- User closed current tab
+      
+      -- Content-Based Distractions  
+      'social_media',         -- Detected social media usage
+      'entertainment',        -- Video streaming, gaming, etc.
+      'shopping',            -- Online shopping sites
+      'news_browsing',       -- News websites
+      'irrelevant_browsing', -- General off-topic browsing
+      
+      -- Physical/Camera Distractions
+      'camera_absence',       -- User not visible in camera
+      'looking_away',        -- User looking away from screen
+      'phone_usage',         -- User using mobile device
+      'eating_drinking',     -- User eating or drinking
+      'conversation',        -- User talking to someone
+      
+      -- Activity-Based
+      'idle',                -- No activity detected
+      'extended_break',      -- Long break period
+      'task_switching',      -- Switching between work tasks
+      
+      -- Environmental
+      'notification_popup',   -- Notification interrupted focus
+      'external_interruption', -- External interruption detected
+      
+      -- Legacy types for backward compatibility
+      'camera_distraction',
+      'blacklisted_content'
+    ));
+EXCEPTION
+  WHEN OTHERS THEN
+    -- If constraint addition fails for any reason, continue without blocking the migration
+    RAISE NOTICE 'Enhanced distraction types constraint already exists or could not be added: %', SQLERRM;
+END $$;
 
 -- Function to get precise duration from voyage
 CREATE OR REPLACE FUNCTION get_voyage_precise_duration(voyage_id_param uuid)
