@@ -9,11 +9,13 @@ import { ExplorationMode } from './ExplorationMode';
 import { SeagullCompanion } from './SeagullCompanion';
 import { WeatherSystem } from './WeatherSystem';
 import { VoiceInteractionPanel } from './VoiceInteractionPanel';
+import { VoiceRecordingControls } from './VoiceRecordingControls';
 import { useVoyageStore } from '../../stores/voyageStore';
 import { useAdvancedDistraction } from '../../hooks/useAdvancedDistraction';
 import { useAudio } from '../../hooks/useAudio';
 import { useVoiceInteraction } from '../../hooks/useVoiceInteraction';
 import { useNotificationStore } from '../../stores/notificationStore';
+import { VoiceService } from '../../services/VoiceService';
 import {
   getHighPrecisionTime,
   formatPreciseDuration,
@@ -156,6 +158,12 @@ export const SailingMode: React.FC<SailingModeProps> = ({ destination, onEndVoya
       if (seagullTimerRef.current) {
         clearTimeout(seagullTimerRef.current);
       }
+
+      // Stop voice recording when component unmounts
+      console.log('🎤 [SAILING] Component unmounting - stopping voice recording...');
+      VoiceService.stopContinuousRecording().catch(error => {
+        console.error('🎤 [SAILING] Error stopping voice recording on unmount:', error);
+      });
     };
   }, [startAmbientSound, stopAmbientSound]);
 
@@ -261,6 +269,15 @@ export const SailingMode: React.FC<SailingModeProps> = ({ destination, onEndVoya
   }, [isDistracted, isExploring]);
 
   const handleEndVoyage = useCallback(async () => {
+    console.log('🎤 [SAILING] Ending voyage - stopping voice recording...');
+
+    // Stop continuous voice recording if it's running
+    try {
+      await VoiceService.stopContinuousRecording();
+    } catch (error) {
+      console.error('🎤 [SAILING] Error stopping voice recording:', error);
+    }
+
     // Announce voyage completion with voice if enabled
     if (isVoiceEnabled && destination) {
       const duration = formatPreciseDuration(elapsedTime);
@@ -552,6 +569,18 @@ export const SailingMode: React.FC<SailingModeProps> = ({ destination, onEndVoya
                           </span>
                         </div>
                       </div>
+                    </div>
+
+                    {/* Voice Recording Controls */}
+                    <div className="col-span-2 border-t pt-4">
+                      <VoiceRecordingControls
+                        voyageId={currentVoyage?.id || ''}
+                        isVoyageActive={!!currentVoyage}
+                        onRecordingToggle={(isRecording) => {
+                          // Handle recording toggle - optional visual feedback
+                          console.log('Voice recording toggled:', isRecording);
+                        }}
+                      />
                     </div>
                   </div>
                 </div>

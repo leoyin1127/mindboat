@@ -1,9 +1,10 @@
 import React from 'react';
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Trophy, Clock, AlertTriangle, MapPin, ArrowRight, Loader2, TrendingUp, Target } from 'lucide-react';
+import { Trophy, Clock, AlertTriangle, MapPin, ArrowRight, Loader2, TrendingUp, Target, Mic } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
+import { VoiceAnalysis } from './VoiceAnalysis';
 import { formatPreciseDuration } from '../../utils/precisionTimer';
 import { supabase } from '../../lib/supabase';
 import type { Destination } from '../../types';
@@ -58,30 +59,31 @@ interface VoyageAssessmentData {
   }>;
 }
 
-export const VoyageComplete: React.FC<VoyageCompleteProps> = ({ 
-  voyageId, 
-  onContinue 
+export const VoyageComplete: React.FC<VoyageCompleteProps> = ({
+  voyageId,
+  onContinue
 }) => {
   const [assessmentData, setAssessmentData] = useState<VoyageAssessmentData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showVoiceAnalysis, setShowVoiceAnalysis] = useState(false);
 
   useEffect(() => {
     const fetchAssessmentData = async (retryCount = 0) => {
       const maxRetries = 3;
       const retryDelay = 1000;
-      
+
       try {
         setIsLoading(true);
         setError(null);
-  
+
         console.log(`Fetching assessment data for voyage ${voyageId} (attempt ${retryCount + 1})`);
-  
+
         // First, ensure voyage statistics are calculated
         try {
           const { error: statsError } = await supabase
             .rpc('calculate_voyage_statistics_precise', { voyage_id_param: voyageId });
-          
+
           if (statsError) {
             console.warn('Failed to calculate voyage statistics:', statsError);
           } else {
@@ -90,41 +92,41 @@ export const VoyageComplete: React.FC<VoyageCompleteProps> = ({
         } catch (statsError) {
           console.warn('Error calling calculate_voyage_statistics_precise:', statsError);
         }
-  
+
         // Wait a moment for database consistency
         if (retryCount === 0) {
           await new Promise(resolve => setTimeout(resolve, 500));
         }
-  
+
         // Fetch assessment data
         const { data, error: fetchError } = await supabase
           .rpc('get_voyage_assessment_data_precise', { voyage_id_param: voyageId });
-  
+
         if (fetchError) {
           console.error('Assessment data fetch error:', fetchError);
           throw fetchError;
         }
-  
+
         if (!data) {
           console.error('No assessment data returned');
           throw new Error('No assessment data found');
         }
-  
+
         console.log('✅ Raw assessment data received:', data);
-  
+
         // Validate and normalize data structure
         if (!data.voyage || !data.distractions) {
           console.warn('⚠️ Incomplete assessment data structure:', data);
-          
+
           if (retryCount < maxRetries) {
             console.log(`Retrying assessment data fetch (${retryCount + 1}/${maxRetries})`);
             setTimeout(() => fetchAssessmentData(retryCount + 1), retryDelay * (retryCount + 1));
             return;
           }
-          
+
           throw new Error('Incomplete assessment data received');
         }
-  
+
         // Handle nested voyage structure
         let normalizedData = data;
         if (data.voyage && !data.voyage.voyage) {
@@ -137,25 +139,25 @@ export const VoyageComplete: React.FC<VoyageCompleteProps> = ({
             }
           };
         }
-  
+
         console.log('✅ Normalized assessment data:', normalizedData);
         setAssessmentData(normalizedData);
-        
+
       } catch (err) {
         console.error('Failed to fetch voyage assessment data:', err);
-        
+
         // Retry logic for network/temporary issues
-        if (retryCount < maxRetries && 
-            (err instanceof Error && 
-             (err.message.includes('network') || 
+        if (retryCount < maxRetries &&
+          (err instanceof Error &&
+            (err.message.includes('network') ||
               err.message.includes('timeout') ||
               err.message.includes('connection')))) {
-          
+
           console.log(`Retrying due to network issue (${retryCount + 1}/${maxRetries})`);
           setTimeout(() => fetchAssessmentData(retryCount + 1), retryDelay * (retryCount + 1));
           return;
         }
-        
+
         // Try to get basic voyage data as fallback
         if (retryCount === 0) {
           console.log('Attempting fallback data fetch...');
@@ -168,7 +170,7 @@ export const VoyageComplete: React.FC<VoyageCompleteProps> = ({
               `)
               .eq('id', voyageId)
               .single();
-  
+
             if (!basicError && basicVoyage) {
               console.log('✅ Using basic voyage data as fallback:', basicVoyage);
               setAssessmentData({
@@ -194,13 +196,13 @@ export const VoyageComplete: React.FC<VoyageCompleteProps> = ({
             console.error('Fallback data fetch also failed:', fallbackError);
           }
         }
-        
+
         setError(err instanceof Error ? err.message : 'Failed to load voyage data');
       } finally {
         setIsLoading(false);
       }
     };
-  
+
     if (voyageId) {
       fetchAssessmentData();
     }
@@ -246,18 +248,18 @@ export const VoyageComplete: React.FC<VoyageCompleteProps> = ({
     if (typeof durationValue === 'object' && durationValue.ms !== undefined) {
       return formatPreciseDurationFromMs(durationValue.ms);
     }
-    
+
     // If it's already in milliseconds (number > 1000 suggests milliseconds)
     if (typeof durationValue === 'number' && durationValue > 1000) {
       return formatPreciseDurationFromMs(durationValue);
     }
-    
+
     // Fallback: assume it's minutes and convert
     const minutes = typeof durationValue === 'number' ? durationValue : 0;
     const milliseconds = minutes * 60 * 1000;
     return formatPreciseDuration(milliseconds);
   };
-  
+
   const getActualDuration = () => {
     // Prefer high precision duration if available
     if (voyage.actual_duration_ms) {
@@ -266,7 +268,7 @@ export const VoyageComplete: React.FC<VoyageCompleteProps> = ({
     // Fallback to regular duration in minutes converted to milliseconds
     return (voyage.actual_duration || 0) * 60 * 1000;
   };
-  
+
   const getPlannedDuration = () => {
     // Prefer high precision duration if available
     if (voyage.planned_duration_ms) {
@@ -278,7 +280,7 @@ export const VoyageComplete: React.FC<VoyageCompleteProps> = ({
   const getPerformanceMessage = () => {
     const focusScore = voyage.focus_quality_score || 0;
     const distractionCount = voyage.distraction_count || 0;
-    
+
     if (focusScore >= 95) {
       return "Perfect focused sailing! Your concentration is as steady as a lighthouse beam.";
     } else if (focusScore >= 85) {
@@ -296,7 +298,7 @@ export const VoyageComplete: React.FC<VoyageCompleteProps> = ({
 
   const getPerformanceColor = () => {
     const focusScore = voyage.focus_quality_score || 0;
-    
+
     if (focusScore >= 85) return 'text-green-600';
     if (focusScore >= 75) return 'text-blue-600';
     if (focusScore >= 60) return 'text-yellow-600';
@@ -355,7 +357,7 @@ export const VoyageComplete: React.FC<VoyageCompleteProps> = ({
                 </div>
                 <p className="text-sm text-gray-600">Actual Duration</p>
               </div>
-              
+
               <div className="text-center">
                 <AlertTriangle className="w-8 h-8 text-orange-500 mx-auto mb-2" />
                 <p className="text-2xl font-bold text-gray-800">
@@ -363,7 +365,7 @@ export const VoyageComplete: React.FC<VoyageCompleteProps> = ({
                 </p>
                 <p className="text-sm text-gray-600">Distractions</p>
               </div>
-              
+
               <div className="text-center">
                 <TrendingUp className="w-8 h-8 text-green-500 mx-auto mb-2" />
                 <p className="text-2xl font-bold text-gray-800">
@@ -371,7 +373,7 @@ export const VoyageComplete: React.FC<VoyageCompleteProps> = ({
                 </p>
                 <p className="text-sm text-gray-600">Focus Quality</p>
               </div>
-              
+
               <div className="text-center">
                 <Target className="w-8 h-8 text-purple-500 mx-auto mb-2" />
                 <p className="text-2xl font-bold text-gray-800">
@@ -394,7 +396,7 @@ export const VoyageComplete: React.FC<VoyageCompleteProps> = ({
           {distractions.summary.total_count > 0 && (
             <Card className="p-6">
               <h3 className="text-xl font-semibold mb-4">Distraction Analysis</h3>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <h4 className="font-medium text-gray-700 mb-3">Summary</h4>
@@ -413,7 +415,7 @@ export const VoyageComplete: React.FC<VoyageCompleteProps> = ({
                     </div>
                   </div>
                 </div>
-                
+
                 <div>
                   <h4 className="font-medium text-gray-700 mb-3">By Type</h4>
                   <div className="space-y-2 text-sm">
@@ -439,7 +441,7 @@ export const VoyageComplete: React.FC<VoyageCompleteProps> = ({
               <p className="text-gray-600 mb-4">
                 Notes and inspirations captured during your exploration:
               </p>
-              
+
               <div className="space-y-3">
                 {exploration_notes.map((note, index) => (
                   <motion.div
@@ -467,7 +469,7 @@ export const VoyageComplete: React.FC<VoyageCompleteProps> = ({
                   </motion.div>
                 ))}
               </div>
-              
+
               <div className="mt-4 p-3 bg-purple-50 rounded-lg border-l-4 border-purple-400">
                 <p className="text-sm text-purple-700">
                   💡 <strong>Seagull's Note:</strong> Your explorations often lead to the most valuable discoveries. These moments of curiosity are treasures for your future voyages!
@@ -479,7 +481,7 @@ export const VoyageComplete: React.FC<VoyageCompleteProps> = ({
           {/* Destination Info */}
           <Card className="p-6">
             <div className="flex items-start space-x-4">
-              <div 
+              <div
                 className="w-4 h-16 rounded-full"
                 style={{ backgroundColor: destination.color_theme }}
               />
@@ -511,11 +513,10 @@ export const VoyageComplete: React.FC<VoyageCompleteProps> = ({
                 </div>
                 <div className="flex justify-between border-t pt-2">
                   <span className="text-gray-600">Completion:</span>
-                  <span className={`font-medium ${
-                    getActualDuration() >= getPlannedDuration()
-                      ? 'text-green-600' 
-                      : 'text-orange-600'
-                  }`}>
+                  <span className={`font-medium ${getActualDuration() >= getPlannedDuration()
+                    ? 'text-green-600'
+                    : 'text-orange-600'
+                    }`}>
                     {getPlannedDuration() ? Math.round((getActualDuration() / getPlannedDuration()) * 100) : 100}%
                   </span>
                 </div>
@@ -533,17 +534,37 @@ export const VoyageComplete: React.FC<VoyageCompleteProps> = ({
             </Card>
           )}
 
-          {/* Continue Button */}
+          {/* Voice Analysis Toggle Button */}
           <div className="text-center pt-4">
-            <Button
-              onClick={onContinue}
-              size="lg"
-              icon={ArrowRight}
-              className="px-8"
-            >
-              View Voyage Map
-            </Button>
+            <div className="flex gap-4 justify-center">
+              <Button
+                onClick={() => setShowVoiceAnalysis(!showVoiceAnalysis)}
+                variant="outline"
+                size="lg"
+                icon={Mic}
+              >
+                {showVoiceAnalysis ? 'Hide' : 'View'} Voice Analysis
+              </Button>
+              <Button
+                onClick={onContinue}
+                size="lg"
+                icon={ArrowRight}
+                className="px-8"
+              >
+                View Voyage Map
+              </Button>
+            </div>
           </div>
+
+          {/* Voice Analysis Section */}
+          {showVoiceAnalysis && (
+            <div className="mt-8">
+              <VoiceAnalysis
+                voyageId={voyageId}
+                isVisible={showVoiceAnalysis}
+              />
+            </div>
+          )}
         </motion.div>
       </div>
     </div>
