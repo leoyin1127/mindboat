@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Anchor, Mail, Lock, User, AlertCircle, Database, Play } from 'lucide-react';
+import { Anchor, AlertCircle, Database, Play } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Card } from '../ui/Card';
@@ -14,33 +14,32 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess }) => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  
-  const { 
-    signIn, 
-    signUp, 
-    enterDemoMode, 
-    isLoading, 
-    error, 
-    authMode, 
-    clearError 
+
+  const {
+    signIn,
+    signUp,
+    enterDemoMode,
+    isLoading,
+    error,
+    clearError
   } = useUserStore();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     clearError();
-    
+
     // Basic validation
     if (!email.trim() || !password.trim()) {
       return;
     }
-    
+
     try {
       if (isSignUp) {
         await signUp(email, password);
       } else {
         await signIn(email, password);
       }
-      
+
       // Only call onSuccess if no error occurred
       if (!error) {
         onSuccess();
@@ -58,12 +57,12 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess }) => {
   };
 
   const isSupabaseConfigured = !!(
-    import.meta.env.VITE_SUPABASE_URL && 
+    import.meta.env.VITE_SUPABASE_URL &&
     import.meta.env.VITE_SUPABASE_ANON_KEY
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-indigo-900 to-purple-900 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-900/30 via-indigo-900/20 to-purple-900/10 backdrop-blur-lg flex items-center justify-center p-4">
       <motion.div
         initial={{ opacity: 0, y: 50 }}
         animate={{ opacity: 1, y: 0 }}
@@ -128,7 +127,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess }) => {
                 required
                 disabled={isLoading}
               />
-              
+
               <Input
                 label="Password"
                 type="password"
@@ -206,7 +205,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess }) => {
                 >
                   Start Demo Mode
                 </Button>
-                
+
                 <Button
                   onClick={() => window.open('https://supabase.com', '_blank')}
                   variant="outline"
@@ -239,7 +238,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess }) => {
           {/* Help Text */}
           <div className="mt-6 text-center">
             <p className="text-xs text-blue-300">
-              {isSupabaseConfigured 
+              {isSupabaseConfigured
                 ? 'Your data will be securely stored and synced across devices'
                 : 'Demo mode: Experience the app without creating an account'
               }

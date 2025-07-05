@@ -15,6 +15,7 @@ import { useAdvancedDistraction } from '../../hooks/useAdvancedDistraction';
 import { useAudio } from '../../hooks/useAudio';
 import { useVoiceInteraction } from '../../hooks/useVoiceInteraction';
 import { useNotificationStore } from '../../stores/notificationStore';
+import { useAppStateStore } from '../../stores/appStateStore';
 import { VoiceService } from '../../services/VoiceService';
 import {
   getHighPrecisionTime,
@@ -25,11 +26,11 @@ import { GeminiService } from '../../services/GeminiService';
 import type { Destination } from '../../types';
 
 interface SailingModeProps {
-  destination: Destination;
-  onEndVoyage: () => void;
+  destination?: Destination;
+  onEndVoyage?: () => void;
 }
 
-export const SailingMode: React.FC<SailingModeProps> = ({ destination, onEndVoyage }) => {
+export const SailingMode: React.FC<SailingModeProps> = ({ destination: propDestination, onEndVoyage }) => {
   const [elapsedTime, setElapsedTime] = useState(0); // Keep in milliseconds for precision
   const [showControls, setShowControls] = useState(false);
   const [weatherMood, setWeatherMood] = useState<'sunny' | 'cloudy' | 'rainy' | 'stormy'>('sunny');
@@ -49,7 +50,36 @@ export const SailingMode: React.FC<SailingModeProps> = ({ destination, onEndVoya
   const distractionCount = useVoyageStore(state => state.distractionCount);
   const endVoyage = useVoyageStore(state => state.endVoyage);
 
+  // Get the destination from the current voyage or use the prop
+  const destination = propDestination || currentVoyage?.destination;
+
   const { showSuccess } = useNotificationStore();
+  const { setView, setScene } = useAppStateStore();
+
+  // Function to send events to Spline scene
+  const sendSplineEvent = useCallback(async (eventType: string, payload: any) => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/spline-proxy`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          eventType,
+          payload
+        })
+      });
+
+      if (response.ok) {
+        console.log(`Spline event '${eventType}' sent successfully`);
+      } else {
+        console.error(`Failed to send Spline event '${eventType}':`, response.status);
+      }
+    } catch (error) {
+      console.error(`Error sending Spline event '${eventType}':`, error);
+    }
+  }, []);
 
   // High-precision timer
   const timerRef = useRef<ReturnType<typeof createPrecisionInterval>>();
@@ -68,6 +98,8 @@ export const SailingMode: React.FC<SailingModeProps> = ({ destination, onEndVoya
       if (weatherMood !== 'cloudy') {
         setWeatherMood('cloudy');
         setAudioWeatherMood('cloudy');
+        // Send weather change to Spline scene
+        sendSplineEvent('weather_change', { mood: 'cloudy' });
       }
     } else {
       setIsExploring(false);
@@ -79,8 +111,10 @@ export const SailingMode: React.FC<SailingModeProps> = ({ destination, onEndVoya
     if (weatherMood !== 'sunny') {
       setWeatherMood('sunny');
       setAudioWeatherMood('sunny');
+      // Send weather change to Spline scene
+      sendSplineEvent('weather_change', { mood: 'sunny' });
     }
-  }, [weatherMood]);
+  }, [weatherMood, sendSplineEvent]);
 
   const handleCaptureInspiration = useCallback((content: string, type: 'text' | 'voice') => {
     const newNote = {
@@ -134,7 +168,14 @@ export const SailingMode: React.FC<SailingModeProps> = ({ destination, onEndVoya
     isVoyageActive: !!currentVoyage,
     isExploring,
     onDistractionResponse: handleDistractionChoice,
-    onInspirationCaptured: handleCaptureInspiration
+    onInspirationCaptured: handleCaptureInspiration,
+    onVoiceSpeakingChange: (speaking) => {
+      // Mute/unmute Spline audio when voice is speaking
+      sendSplineEvent('audio_control', {
+        action: speaking ? 'mute' : 'unmute',
+        volume: speaking ? 0.1 : 0.5
+      });
+    }
   });
 
   // Initialize services and start monitoring
@@ -221,6 +262,11 @@ export const SailingMode: React.FC<SailingModeProps> = ({ destination, onEndVoya
     if (isDistracted && !isExploring && !showDistractionAlert) {
       console.log('🚨 [SAILING] ⚠️ SHOWING DISTRACTION ALERT');
       setShowDistractionAlert(true);
+      // Trigger seagull animation in Spline scene
+      sendSplineEvent('show_seagull', {
+        distractionType,
+        message: 'Hey! Stay on course to your destination!'
+      });
 
       // Note: Voice alert is handled by EnhancedDistractionAlert component
 

@@ -14,13 +14,15 @@ interface UseVoiceInteractionProps {
   isExploring: boolean;
   onDistractionResponse?: (response: 'return_to_course' | 'exploring') => void;
   onInspirationCaptured?: (content: string, type: 'voice' | 'text') => void;
+  onVoiceSpeakingChange?: (isSpeaking: boolean) => void;
 }
 
 export const useVoiceInteraction = ({
   isVoyageActive,
   isExploring,
   onDistractionResponse,
-  onInspirationCaptured
+  onInspirationCaptured,
+  onVoiceSpeakingChange
 }: UseVoiceInteractionProps) => {
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -133,13 +135,24 @@ export const useVoiceInteraction = ({
             if (voiceStatus.features.elevenLabs) {
               try {
                 const { ElevenLabsService } = await import('../services/ElevenLabsService');
+
+                // Notify that voice is about to speak (mute 3D audio)
+                onVoiceSpeakingChange?.(true);
+                setIsSpeaking(true);
+
                 if (analysis.type === 'exploring') {
                   await ElevenLabsService.speakExplorationConfirmation();
                 } else {
                   await ElevenLabsService.speakReturnConfirmation();
                 }
+
+                // Notify that voice has finished speaking (restore 3D audio)
+                onVoiceSpeakingChange?.(false);
+                setIsSpeaking(false);
               } catch (error) {
                 console.warn('🎤 [VOICE] Failed to speak confirmation:', (error as Error).message);
+                onVoiceSpeakingChange?.(false);
+                setIsSpeaking(false);
               }
             }
 
