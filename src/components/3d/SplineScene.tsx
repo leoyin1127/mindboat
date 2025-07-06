@@ -14,6 +14,8 @@ export const SplineScene: React.FC<SplineSceneProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [retryCount, setRetryCount] = useState(0);
   const maxRetries = 3;
+  const [retryCount, setRetryCount] = useState(0);
+  const maxRetries = 3;
 
   const validateSceneUrl = useCallback((url: string): boolean => {
     try {
@@ -78,14 +80,38 @@ export const SplineScene: React.FC<SplineSceneProps> = ({
     console.log('Spline scene loaded successfully at:', new Date().toLocaleTimeString());
     setError(null);
     setIsLoading(false);
+    
+    // Check if this is the specific "Missing property" error
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage.includes('Missing property') || errorMessage.includes('buildTimeline')) {
+      setError('The 3D scene appears to be corrupted or incompatible. Please check if the scene needs to be re-exported from Spline.');
+    } else {
+      setError('Failed to load 3D scene. The scene may be temporarily unavailable.');
+    }
+    
+    // Attempt to reload after a delay, but limit retries
+    if (retryCount < maxRetries) {
+      setTimeout(() => {
+        const baseUrl = import.meta.env.VITE_SPLINE_SCENE_URL;
+        if (baseUrl && validateSceneUrl(baseUrl)) {
+          setRetryCount(prev => prev + 1);
+          setKey(prev => prev + 1);
+          const timestamp = Date.now();
+          setSceneUrl(`${baseUrl}?v=${timestamp}`);
+          setError(null);
+          setIsLoading(true);
+        }
+      }, 3000 * (retryCount + 1)); // Exponential backoff
+    }
     setRetryCount(0); // Reset retry count on successful load
-  }, []);
+  }, [retryCount, maxRetries, validateSceneUrl]);
 
   // Force refresh function
   const forceRefresh = useCallback(() => {
     const baseUrl = import.meta.env.VITE_SPLINE_SCENE_URL;
     if (baseUrl && validateSceneUrl(baseUrl)) {
       setKey(prev => prev + 1);
+      setRetryCount(0);
       setRetryCount(0);
       const timestamp = Date.now();
       setSceneUrl(`${baseUrl}?v=${timestamp}`);
@@ -106,6 +132,11 @@ export const SplineScene: React.FC<SplineSceneProps> = ({
                 Retry attempt {retryCount + 1} of {maxRetries}
               </div>
             )}
+            {retryCount < maxRetries && (
+              <div className="text-sm text-white/70">
+                Retry attempt {retryCount + 1} of {maxRetries}
+              </div>
+            )}
             {import.meta.env.VITE_SPLINE_SCENE_URL && (
               <button
                 onClick={forceRefresh}
@@ -114,6 +145,16 @@ export const SplineScene: React.FC<SplineSceneProps> = ({
               >
                 {isLoading ? 'Loading...' : 'Retry Loading Scene'}
               </button>
+            )}
+            {retryCount >= maxRetries && (
+              <div className="text-sm text-white/70 mt-4">
+                <p>If this issue persists, please:</p>
+                <ul className="list-disc list-inside mt-2 space-y-1 text-left">
+                  <li>Check that your Spline scene is published and accessible</li>
+                  <li>Try re-exporting the scene from Spline</li>
+                  <li>Verify the scene URL in your .env file</li>
+                </ul>
+              </div>
             )}
             {retryCount >= maxRetries && (
               <div className="text-sm text-white/70 mt-4">
