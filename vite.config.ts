@@ -1,10 +1,11 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import mkcert from 'vite-plugin-mkcert';
 import path from 'path';
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), mkcert()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
@@ -36,6 +37,11 @@ export default defineConfig({
     minify: 'esbuild' // Use esbuild for faster builds
   },
   server: {
+    // Enable HTTPS unconditionally during local development so that
+    // Spline's event-stream endpoint permits CORS. vite-plugin-mkcert
+    // auto-generates a valid self-signed certificate the first time you run `npm run dev`.
+    // @ts-expect-error  boolean is accepted by Vite but the type definition wants ServerOptions too
+    https: true,
     proxy: {
       '/api/spline-webhook': {
         target: 'https://hooks.spline.design',
