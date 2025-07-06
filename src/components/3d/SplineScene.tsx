@@ -14,8 +14,6 @@ export const SplineScene: React.FC<SplineSceneProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [retryCount, setRetryCount] = useState(0);
   const maxRetries = 3;
-  const [retryCount, setRetryCount] = useState(0);
-  const maxRetries = 3;
 
   const validateSceneUrl = useCallback((url: string): boolean => {
     try {
