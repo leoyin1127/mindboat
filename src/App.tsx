@@ -49,7 +49,7 @@ function App() {
                   'Content-Type': 'application/json',
                   'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
                 },
-                body: JSON.stringify({ numbaer5: 0 })
+                body: JSON.stringify({ number: 0 })
               });
 
               if (response.ok) {

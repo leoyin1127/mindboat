@@ -26,7 +26,7 @@ export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
-        body: JSON.stringify({ number: 0 })
+        body: JSON.stringify({ number: 1 })
       });
 
       if (response.ok) {

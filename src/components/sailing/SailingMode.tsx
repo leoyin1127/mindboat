@@ -65,10 +65,7 @@ export const SailingMode: React.FC<SailingModeProps> = ({ destination: propDesti
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
-        body: JSON.stringify({
-          eventType,
-          payload
-        })
+        body: JSON.stringify(payload)
       });
 
       if (response.ok) {

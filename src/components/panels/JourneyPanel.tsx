@@ -105,10 +105,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
-        body: JSON.stringify({
-          webhookUrl: 'https://hooks.spline.design/vS-vioZuERs',
-          payload: { numbaer2: 0 }
-        })
+        body: JSON.stringify({ number: 3 })
       });
 
       if (response.ok) {

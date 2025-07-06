@@ -7,7 +7,7 @@ avoiding CORS issues when calling from the frontend.
 ## Usage
 - URL: https://[your-project].supabase.co/functions/v1/spline-proxy
 - Method: POST
-- Body: { webhookUrl: string, payload: object } (for flexible webhook calls)
+- Body: { number: 0|1|2|3 } (0=goals, 1=welcome, 2=journey, 3=seagull)
 - Returns: Response from Spline API
 */
 
@@ -18,11 +18,7 @@ const corsHeaders = {
 }
 
 interface SplineProxyRequest {
-  webhookUrl?: string;
-  payload?: any;
-  // Legacy support for direct payload
   number?: number;
-  numbaer2?: number;
   [key: string]: any;
 }
 
@@ -65,18 +61,27 @@ Deno.serve(async (req: Request) => {
     console.log('Request data:', JSON.stringify(requestData, null, 2))
     console.log('Timestamp:', new Date().toISOString())
 
-    // Determine webhook URL and payload
+    // Determine which webhook to call based on the number parameter
     let webhookUrl: string
-    let payload: any
+    let payload: any = requestData
 
-    if (requestData.webhookUrl && requestData.payload) {
-      // New flexible format
-      webhookUrl = requestData.webhookUrl
-      payload = requestData.payload
-    } else {
-      // Legacy format - default to original webhook
-      webhookUrl = 'https://hooks.spline.design/gpRFQacPBZs'
-      payload = requestData
+    // Map number to specific webhook URLs
+    switch (requestData.number) {
+      case 0: // Seagull
+        webhookUrl = 'https://hooks.spline.design/gpRFQacPBZs'
+        break
+      case 1: // Goals
+        webhookUrl = 'https://hooks.spline.design/ZleLTDKS7xo'
+        break
+      case 2: // Welcome
+        webhookUrl = 'https://hooks.spline.design/xyN_bGAd8LY'
+        break
+      case 3: // Journey
+        webhookUrl = 'https://hooks.spline.design/vS-vioZuERs'
+        break
+      default:
+        // Default to goals webhook
+        webhookUrl = 'https://hooks.spline.design/ZleLTDKS7xo'
     }
 
     // Make the request to Spline webhook
