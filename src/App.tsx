@@ -1,11 +1,11 @@
 import React from 'react';
-import { SplineScene } from './components/3d/SplineScene';
-import { SplineEventHandler } from './components/3d/SplineEventHandler';
+import { SplineScene } from './components/SplineScene';
+import { SplineEventHandler } from './components/SplineEventHandler';
 
 function App() {
   const [isModalOpen, setIsModalOpen] = React.useState(false);
 
-  const handleSplineEvent = (event: unknown) => {
+  const handleSplineEvent = (event: any) => {
     console.log('Spline event received in App:', event);
     // You can add custom logic here to handle different types of events
     // For example, trigger different animations or UI changes based on event.payload
@@ -18,7 +18,7 @@ function App() {
     };
 
     window.addEventListener('modalStateChange', handleModalStateChange as EventListener);
-
+    
     return () => {
       window.removeEventListener('modalStateChange', handleModalStateChange as EventListener);
     };
@@ -28,9 +28,9 @@ function App() {
     <div className="relative h-screen">
       {/* 3D Scene Background - 传递交互禁用状态 */}
       <SplineScene isInteractionDisabled={isModalOpen} />
-
+      
       {/* Spline Event Handler - handles real-time events from Spline */}
-      <SplineEventHandler
+      <SplineEventHandler 
         onEventReceived={handleSplineEvent}
         onModalStateChange={setIsModalOpen}
       />
@@ -49,9 +49,9 @@ function App() {
                   'Content-Type': 'application/json',
                   'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
                 },
-                body: JSON.stringify({ number: 0 })
+                body: JSON.stringify({ numbaer5: 0 })
               });
-
+              
               if (response.ok) {
                 console.log('Test seagull webhook triggered successfully');
               } else {

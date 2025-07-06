@@ -21,10 +21,6 @@ export default {
           'to': { textShadow: '0 0 20px rgba(255,255,255,0.6), 0 0 30px rgba(255,255,255,0.4)' },
         },
       },
-      // MindBoat functional extensions can be added here later
-      colors: {
-        // Placeholder for any mindboat-specific colors if needed
-      }
     },
   },
   plugins: [],

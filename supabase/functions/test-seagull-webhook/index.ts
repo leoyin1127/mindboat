@@ -1,13 +1,14 @@
 /*
 # Test Seagull Webhook Edge Function
 
-This Edge Function is for testing the seagull panel functionality.
-It broadcasts a seagull event to the realtime channel.
+This Edge Function is specifically for testing the Seagull Voice Assistant feature from Postman.
+It's identical to the seagull-webhook but with different source identification for testing purposes.
 
 ## Usage
 - URL: https://[your-project].supabase.co/functions/v1/test-seagull-webhook
 - Method: POST
-- Triggers: Seagull panel with voice interaction
+- Body: {"numbaer5": 0}
+- Triggers: SeagullPanel with automatic voice interaction
 */
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
@@ -16,6 +17,11 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
+interface TestSeagullWebhookPayload {
+  numbaer5?: number;
+  [key: string]: any;
 }
 
 Deno.serve(async (req: Request) => {
@@ -39,8 +45,8 @@ Deno.serve(async (req: Request) => {
       )
     }
 
-    // Parse the request body (optional)
-    let payload = {}
+    // Parse the request body
+    let payload: TestSeagullWebhookPayload = {}
     try {
       const body = await req.text()
       if (body) {
@@ -54,6 +60,7 @@ Deno.serve(async (req: Request) => {
     console.log('=== TEST SEAGULL WEBHOOK CALLED ===')
     console.log('Payload received:', JSON.stringify(payload, null, 2))
     console.log('Timestamp:', new Date().toISOString())
+    console.log('Expected numbaer5 value:', payload.numbaer5)
 
     // Initialize Supabase client
     const supabase = createClient(
@@ -61,14 +68,14 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // Create the seagull event data
+    // Create the seagull event data with test-specific source
     const eventData = {
       type: 'spline_seagull_trigger',
       payload: {
         ...payload,
         modalType: 'seagull',
         uiAction: 'show_seagull',
-        message: 'Captain Voice Assistant Activated',
+        message: 'Test Captain Voice Assistant Activated',
         apiEndpoint: 'test-seagull-webhook',
         timestamp: new Date().toISOString(),
         source: 'test-seagull-webhook',
@@ -79,7 +86,7 @@ Deno.serve(async (req: Request) => {
       source: 'spline'
     }
 
-    console.log('=== BROADCASTING SEAGULL EVENT ===')
+    console.log('=== BROADCASTING TEST SEAGULL EVENT ===')
     console.log('Event data:', JSON.stringify(eventData, null, 2))
 
     // Broadcast to realtime channel
@@ -93,23 +100,30 @@ Deno.serve(async (req: Request) => {
 
     console.log('Broadcast result:', broadcastResult)
 
-    // Prepare seagull-specific response
+    // Prepare test seagull-specific response
     const apiResponse = {
       success: true,
-      status: 'seagull_activated',
-      message: 'Captain Voice Assistant Activated',
+      status: 'test_seagull_activated',
+      message: 'Test Captain Voice Assistant Activated',
       action: 'show_seagull_panel',
       eventId: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
       content: {
-        title: "Captain's Voice Assistant",
-        description: "Automatic voice interaction initiated",
+        title: "Captain's Voice Assistant (Test)",
+        description: "Automatic voice interaction initiated via test webhook",
         type: 'seagull',
         modalType: 'seagull',
         voiceInteraction: true,
         seagullMessage: "Captain, it seems we've veered off course. Let me check on our current situation."
       },
-      receivedPayload: payload
+      receivedPayload: payload,
+      processedAs: {
+        eventType: 'spline_seagull_trigger',
+        modalType: 'seagull',
+        uiAction: 'show_seagull',
+        voiceActivated: true,
+        testMode: true
+      }
     }
 
     console.log('=== TEST SEAGULL API RESPONSE ===')
