@@ -10,56 +10,95 @@ export const SplineScene: React.FC<SplineSceneProps> = ({
 }) => {
   const [key, setKey] = useState(0);
   const [sceneUrl, setSceneUrl] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // 添加时间戳参数强制刷新
+    const baseUrl = import.meta.env.VITE_SPLINE_SCENE_URL;
+    
+    if (!baseUrl) {
+      setError('Spline scene URL not configured. Please set VITE_SPLINE_SCENE_URL in your .env file.');
+      return;
+    }
+
+    // Add timestamp parameter to force refresh and avoid cache issues
     const timestamp = Date.now();
-    const baseUrl = 'https://prod.spline.design/edOeRvrcuWyGaD41/scene.splinecode';
     setSceneUrl(`${baseUrl}?v=${timestamp}`);
+    setError(null);
   }, []);
 
   const handleSplineError = (error: unknown) => {
     console.error('Spline scene error:', error);
-    // 如果加载失败，尝试重新加载
+    setError('Failed to load 3D scene. The scene may be temporarily unavailable.');
+    
+    // Attempt to reload after a delay
     setTimeout(() => {
-      setKey(prev => prev + 1);
-      const timestamp = Date.now();
-      const baseUrl = 'https://prod.spline.design/edOeRvrcuWyGaD41/scene.splinecode';
-      setSceneUrl(`${baseUrl}?v=${timestamp}`);
-    }, 2000);
+      const baseUrl = import.meta.env.VITE_SPLINE_SCENE_URL;
+      if (baseUrl) {
+        setKey(prev => prev + 1);
+        const timestamp = Date.now();
+        setSceneUrl(`${baseUrl}?v=${timestamp}`);
+        setError(null);
+      }
+    }, 3000);
   };
 
   const handleSplineLoad = () => {
     console.log('Spline scene loaded successfully at:', new Date().toLocaleTimeString());
+    setError(null);
   };
 
-  // 强制刷新函数
+  // Force refresh function
   const forceRefresh = () => {
-    setKey(prev => prev + 1);
-    const timestamp = Date.now();
-    const baseUrl = 'https://prod.spline.design/edOeRvrcuWyGaD41/scene.splinecode';
-    setSceneUrl(`${baseUrl}?v=${timestamp}`);
+    const baseUrl = import.meta.env.VITE_SPLINE_SCENE_URL;
+    if (baseUrl) {
+      setKey(prev => prev + 1);
+      const timestamp = Date.now();
+      setSceneUrl(`${baseUrl}?v=${timestamp}`);
+      setError(null);
+    }
   };
 
-  if (!sceneUrl) {
-    return (
-      <div className="fixed inset-0 z-0 bg-gradient-to-b from-slate-900 via-blue-900 to-slate-800 flex items-center justify-center">
-        <div className="text-white text-lg font-light animate-pulse">Preparing scene...</div>
+  // Fallback gradient background
+  const FallbackBackground = () => (
+    <div className="fixed inset-0 z-0 bg-gradient-to-b from-slate-900 via-blue-900 to-slate-800 flex items-center justify-center">
+      <div className="text-center text-white">
+        {error ? (
+          <div className="space-y-4">
+            <div className="text-lg font-light">{error}</div>
+            {import.meta.env.VITE_SPLINE_SCENE_URL && (
+              <button
+                onClick={forceRefresh}
+                className="bg-white/20 hover:bg-white/30 text-white px-6 py-2 rounded-lg backdrop-blur-sm border border-white/20 transition-all duration-200"
+              >
+                Retry Loading Scene
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="text-lg font-light animate-pulse">Preparing scene...</div>
+        )}
       </div>
-    );
+    </div>
+  );
+
+  // Show fallback if no URL configured or error occurred
+  if (!sceneUrl || error) {
+    return <FallbackBackground />;
   }
 
   return (
     <div className="fixed inset-0 z-0">
-      {/* 刷新按钮 - 用于调试 */}
-      <button
-        onClick={forceRefresh}
-        className="fixed top-4 right-4 z-50 bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg backdrop-blur-sm border border-white/20 transition-all duration-200"
-      >
-        刷新场景
-      </button>
+      {/* Debug refresh button - only show in development */}
+      {import.meta.env.DEV && (
+        <button
+          onClick={forceRefresh}
+          className="fixed top-4 right-4 z-50 bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg backdrop-blur-sm border border-white/20 transition-all duration-200 text-sm"
+        >
+          Refresh Scene
+        </button>
+      )}
 
-      {/* 交互禁用遮罩层 - 当模态框打开时阻止Spline交互 */}
+      {/* Interaction disable overlay */}
       {isInteractionDisabled && (
         <div
           className="absolute inset-0 z-10 bg-transparent cursor-default"
@@ -84,11 +123,7 @@ export const SplineScene: React.FC<SplineSceneProps> = ({
         />
       )}
 
-      <Suspense fallback={
-        <div className="w-full h-full bg-gradient-to-b from-slate-900 via-blue-900 to-slate-800 flex items-center justify-center">
-          <div className="text-white text-lg font-light animate-pulse">Loading the ocean...</div>
-        </div>
-      }>
+      <Suspense fallback={<FallbackBackground />}>
         <div
           style={{
             width: '100%',
@@ -99,7 +134,7 @@ export const SplineScene: React.FC<SplineSceneProps> = ({
           }}
         >
           <Spline
-            key={key} // 使用key强制重新渲染
+            key={key}
             scene={sceneUrl}
             style={{ width: '100%', height: '100%' }}
             onLoad={handleSplineLoad}
