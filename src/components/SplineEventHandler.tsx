@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { X, Sparkles, Compass, Target, Heart, MessageCircle } from 'lucide-react'
 import { LifeGoalsModal } from './LifeGoalsModal'
@@ -31,11 +32,15 @@ interface SplineEvent {
 interface SplineEventHandlerProps {
   onEventReceived?: (event: SplineEvent) => void
   onModalStateChange?: (isOpen: boolean) => void
+  session: Session | null
+  setShowAuthModal: (show: boolean) => void
 }
 
 export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({ 
   onEventReceived,
-  onModalStateChange 
+  onModalStateChange,
+  session,
+  setShowAuthModal
 }) => {
   const [showModal, setShowModal] = useState(false)
   const [currentEvent, setCurrentEvent] = useState<SplineEvent | null>(null)
@@ -159,10 +164,16 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
             setShowJourneyPanel(false)
             setShowSeagullPanel(false)
           } else if (shouldShowGoals) {
-            setShowLifeGoalsModal(true)
-            setShowWelcomePanel(false)
-            setShowJourneyPanel(false)
-            setShowSeagullPanel(false)
+            // Authentication check for Life Goals feature
+            if (session) {
+              setShowLifeGoalsModal(true)
+              setShowWelcomePanel(false)
+              setShowJourneyPanel(false)
+              setShowSeagullPanel(false)
+            } else {
+              // If not authenticated, show login modal instead
+              setShowAuthModal(true)
+            }
           } else if (shouldShowJourney) {
             setShowJourneyPanel(true)
             setShowWelcomePanel(false)
@@ -181,16 +192,36 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [onEventReceived])
+  }, [onEventReceived, session, setShowAuthModal])
 
   const closeModal = () => {
     setShowModal(false)
     setCurrentEvent(null)
   }
 
-  const handleLifeGoalSubmit = (goal: string) => {
+  const handleLifeGoalSubmit = async (goal: string) => {
     console.log('Life goal submitted:', goal)
-    // Here you could save to Supabase database if needed
+    
+    try {
+      // Call the goals-webhook Edge Function with the goal text
+      const { data, error } = await supabase.functions.invoke('goals-webhook', {
+        body: { goal_text: goal }
+      })
+      
+      if (error) {
+        console.error('Error saving life goal:', error)
+        // You could show an error notification here
+        return false
+      }
+      
+      console.log('Life goal saved successfully:', data)
+      // You could show a success notification here
+      return true
+    } catch (error) {
+      console.error('Error invoking goals-webhook function:', error)
+      // You could show an error notification here
+      return false
+    }
   }
 
   const handleVoiceSubmitSuccess = () => {
@@ -266,7 +297,7 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
         message={currentEvent?.payload?.seagullMessage}
       />
 
-      {/* Life Goals Modal */}
+      {/* Life Goals Modal - Only show if user is authenticated */}
       <LifeGoalsModal
         isOpen={showLifeGoalsModal}
         onClose={() => setShowLifeGoalsModal(false)}

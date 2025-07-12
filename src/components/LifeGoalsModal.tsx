@@ -4,7 +4,7 @@ import { Heart } from 'lucide-react';
 interface LifeGoalsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (goal: string) => void;
+  onSubmit: (goal: string) => Promise<boolean>; // Updated to return a Promise<boolean>
 }
 
 export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
@@ -14,58 +14,30 @@ export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
 }) => {
   const [goal, setGoal] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const sendSplineWebhook = async () => {
-    try {
-      console.log('Sending Spline webhook via backend proxy...');
-      
-      // Call our backend proxy instead of Spline directly
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/spline-proxy`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({ number: 0 })
-      });
-
-      if (response.ok) {
-        const responseData = await response.json();
-        console.log('Backend proxy response:', responseData);
-        
-        if (responseData.success) {
-          console.log('Spline webhook sent successfully via proxy');
-          console.log('Spline response:', responseData.splineResponse);
-        } else {
-          console.error('Spline webhook failed:', responseData);
-        }
-      } else {
-        console.error('Failed to call backend proxy:', response.status, response.statusText);
-      }
-    } catch (error) {
-      console.error('Error calling backend proxy:', error);
-    }
-  };
+  // We'll remove the sendSplineWebhook function since that's now handled by the goals-webhook function
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!goal.trim()) return;
 
     setIsSubmitting(true);
+    setError(null);
     
     try {
-      // Send the Spline webhook first via backend proxy
-      await sendSplineWebhook();
+      // Submit the goal and wait for the result
+      const success = await onSubmit(goal.trim());
       
-      // Simulate a brief delay for better UX
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Then submit the goal
-      onSubmit(goal.trim());
-      setGoal('');
-      onClose();
+      if (success) {
+        setGoal('');
+        onClose();
+      } else {
+        setError('Failed to save your life goal. Please try again.');
+      }
     } catch (error) {
       console.error('Error in handleSubmit:', error);
+      setError('An unexpected error occurred. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -74,20 +46,21 @@ export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
   const handleNext = async () => {
     if (goal.trim()) {
       setIsSubmitting(true);
+      setError(null);
       
       try {
-        // Send the Spline webhook first via backend proxy
-        await sendSplineWebhook();
+        // Submit the goal and wait for the result
+        const success = await onSubmit(goal.trim());
         
-        // Simulate a brief delay for better UX
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // Then submit the goal
-        onSubmit(goal.trim());
-        setGoal('');
-        onClose();
+        if (success) {
+          setGoal('');
+          onClose();
+        } else {
+          setError('Failed to save your life goal. Please try again.');
+        }
       } catch (error) {
         console.error('Error in handleNext:', error);
+        setError('An unexpected error occurred. Please try again.');
       } finally {
         setIsSubmitting(false);
       }
@@ -146,6 +119,13 @@ export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
                   {goal.length}/500
                 </div>
               </div>
+
+              {/* Error message */}
+              {error && (
+                <div className="bg-red-500/20 border border-red-500/40 text-white px-4 py-3 rounded-xl text-sm">
+                  {error}
+                </div>
+              )}
 
               {/* Apple-style Next button - using Back button size (smaller) - reverted to transparent background */}
               <div className="flex justify-center pt-4">
