@@ -101,6 +101,7 @@ export const SplineScene: React.FC<SplineSceneProps> = ({
           <Spline
             key={key} // 使用key强制重新渲染
             scene={sceneUrl}
+            scroll-target={window}
             style={{ width: '100%', height: '100%' }}
             onLoad={handleSplineLoad}
             onError={handleSplineError}
