@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Heart } from 'lucide-react';
+import { auth } from '../lib/auth';
 
 interface LifeGoalsModalProps {
   isOpen: boolean;
@@ -16,23 +17,42 @@ export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+
   // We'll remove the sendSplineWebhook function since that's now handled by the goals-webhook function
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!goal.trim()) return;
 
     setIsSubmitting(true);
-    setError(null);
-    
+
     try {
-      await onSubmit(goal.trim());
+      // Save the goal to database using auth system
+      console.log('💫 Saving guiding star goal:', goal.trim());
+      await auth.setGuidingStar(goal.trim());
+      console.log('✅ Guiding star saved successfully');
+
+      // Send the Spline webhook for animation
+      await sendSplineWebhook();
+
+      // Simulate a brief delay for better UX
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Submit the goal (for any additional UI handling)
+      onSubmit(goal.trim());
+
       setGoal('');
       // Don't close immediately, let the parent handle the transition
       // onClose() will be called by SplineEventHandler after showing journey panel
     } catch (error) {
-      console.error('Error in handleSubmit:', error);
-      setError(error instanceof Error ? error.message : 'User not authenticated - cannot save life goal');
+
+      console.error('❌ Error saving guiding star:', error);
+      // Still proceed with UI flow even if database save fails
+      onSubmit(goal.trim());
+      setGoal('');
+      onClose();
+
     } finally {
       setIsSubmitting(false);
     }
@@ -41,10 +61,18 @@ export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
   const handleNext = async () => {
     if (goal.trim()) {
       setIsSubmitting(true);
-      setError(null);
-      
+
+
       try {
-        await onSubmit(goal.trim());
+        // Send the Spline webhook first via backend proxy
+        await sendSplineWebhook();
+
+        // Simulate a brief delay for better UX
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Then submit the goal
+        onSubmit(goal.trim());
+
         setGoal('');
         // Don't close immediately, let the parent handle the transition
         // onClose() will be called by SplineEventHandler after showing journey panel
@@ -63,11 +91,11 @@ export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
     <div className="fixed inset-0 z-50 bg-black/20 backdrop-blur-3xl">
       {/* Ultra subtle inner glow overlay across entire screen */}
       <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-transparent pointer-events-none"></div>
-      
+
       {/* Content container - centered but text position unchanged */}
       <div className="flex items-center justify-center min-h-screen p-8">
         <div className="relative max-w-2xl w-full">
-          
+
           {/* Main glass panel with Apple-inspired styling - reverted to transparent background */}
           <div className="relative bg-gradient-to-br from-white/12 via-white/8 to-white/6 
                           backdrop-blur-2xl border border-white/20 rounded-3xl p-10
@@ -75,13 +103,13 @@ export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
                           before:absolute before:inset-0 before:rounded-3xl 
                           before:bg-gradient-to-br before:from-white/8 before:via-transparent before:to-transparent 
                           before:pointer-events-none overflow-hidden">
-            
+
             {/* Header without logo - title changed to 32px */}
             <div className="text-center mb-10 relative z-10">
               <h2 className="text-[32px] font-playfair font-normal text-white mb-6 leading-tight">
                 What kind of person do you want to become?
               </h2>
-              
+
               <p className="text-white/90 text-base font-inter leading-relaxed max-w-lg mx-auto">
                 The Mind Boat gently filters out distractions, helping you focus on what truly matters and guiding you toward self-awareness and personal growth.
               </p>
@@ -103,7 +131,7 @@ export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
                   maxLength={500}
                   required
                 />
-                
+
                 {/* Character count */}
                 <div className="absolute bottom-3 right-4 text-xs text-white/50 font-inter">
                   {goal.length}/500
@@ -152,12 +180,12 @@ export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
 
             {/* Ultra subtle decorative elements */}
             <div className="absolute -top-3 -left-3 w-6 h-6 bg-white/10 rounded-full blur-sm animate-pulse"></div>
-            <div className="absolute -bottom-3 -right-3 w-8 h-8 bg-white/8 rounded-full blur-sm animate-pulse" 
-                 style={{animationDelay: '1s'}}></div>
+            <div className="absolute -bottom-3 -right-3 w-8 h-8 bg-white/8 rounded-full blur-sm animate-pulse"
+              style={{ animationDelay: '1s' }}></div>
             <div className="absolute top-1/3 -right-3 w-3 h-3 bg-white/12 rounded-full blur-sm animate-pulse"
-                 style={{animationDelay: '2s'}}></div>
+              style={{ animationDelay: '2s' }}></div>
             <div className="absolute bottom-1/3 -left-3 w-4 h-4 bg-white/10 rounded-full blur-sm animate-pulse"
-                 style={{animationDelay: '0.5s'}}></div>
+              style={{ animationDelay: '0.5s' }}></div>
           </div>
         </div>
       </div>
