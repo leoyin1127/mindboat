@@ -132,11 +132,25 @@ Deno.serve(async (req: Request) => {
 
     // Extract session data
     const { taskId, sessionData } = requestData
-    const { taskTitle, taskCategory } = sessionData
+    const { taskTitle, taskCategory, durationSeconds, focusSeconds, driftSeconds, driftCount } = sessionData
 
-    // Calculate session duration (mock calculation)
-    const sessionDuration = Math.random() * 3 + 0.5 // 0.5 to 3.5 hours
-    const distractionTime = Math.floor(Math.random() * 60 + 10) // 10 to 70 minutes
+    // Calculate actual session duration from real data
+    const actualDurationSeconds = Number(durationSeconds) || 0
+    const actualFocusSeconds = Number(focusSeconds) || 0
+    const actualDriftSeconds = Number(driftSeconds) || 0
+    const actualDriftCount = Number(driftCount) || 0
+
+    // Convert to hours and minutes for display
+    const sessionDurationHours = (actualDurationSeconds / 3600)
+    const driftTimeMinutes = Math.floor(actualDriftSeconds / 60)
+
+    console.log('=== ACTUAL SESSION DATA ===')
+    console.log('Duration (seconds):', actualDurationSeconds)
+    console.log('Duration (hours):', sessionDurationHours.toFixed(2))
+    console.log('Focus (seconds):', actualFocusSeconds)
+    console.log('Drift (seconds):', actualDriftSeconds)
+    console.log('Drift (minutes):', driftTimeMinutes)
+    console.log('Drift count:', actualDriftCount)
 
     // Get category-specific data or default to writing
     const categoryData = mockSummaryData[taskCategory as keyof typeof mockSummaryData] || mockSummaryData.writing
@@ -148,11 +162,11 @@ Deno.serve(async (req: Request) => {
     const selectedImageUrl = categoryData.imageUrls[randomImageIndex]
     const selectedTemplate = categoryData.summaryTemplates[randomTemplateIndex]
 
-    // Replace template variables
+    // Replace template variables with actual session data
     const summaryText = selectedTemplate
-      .replace(/{duration}/g, sessionDuration.toFixed(1))
+      .replace(/{duration}/g, sessionDurationHours.toFixed(1))
       .replace(/{task_title}/g, taskTitle)
-      .replace(/{distraction_time}/g, distractionTime.toString())
+      .replace(/{distraction_time}/g, driftTimeMinutes.toString())
 
     // Prepare response
     const response: SailingSummaryResponse = {
@@ -180,9 +194,9 @@ Deno.serve(async (req: Request) => {
   } catch (error) {
     console.error('=== ERROR IN SAILING SUMMARY ===')
     console.error('Error details:', error)
-    
+
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         error: 'Internal server error',
         message: error.message,
         timestamp: new Date().toISOString(),
