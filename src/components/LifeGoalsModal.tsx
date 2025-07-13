@@ -45,18 +45,18 @@ export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      // Save the goal to database using auth system
+      // Save the goal to database using auth system first
       console.log('💫 Saving guiding star goal:', goal.trim());
       await auth.setGuidingStar(goal.trim());
       console.log('✅ Guiding star saved successfully');
 
-      // Send the Spline webhook for animation
+      // Then send the Spline webhook for animation only
       await sendSplineWebhook();
 
       // Simulate a brief delay for better UX
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      // Submit the goal (for any additional UI handling)
+      // Submit the goal for UI handling (goal already saved above)
       onSubmit(goal.trim());
 
       setGoal('');
@@ -65,10 +65,8 @@ export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
     } catch (error) {
 
       console.error('❌ Error saving guiding star:', error);
-      // Still proceed with UI flow even if database save fails
-      onSubmit(goal.trim());
-      setGoal('');
-      onClose();
+      // Show error and don't proceed if saving fails
+      setError('Failed to save life goal. Please try again.');
 
     } finally {
       setIsSubmitting(false);
@@ -81,13 +79,18 @@ export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
 
 
       try {
-        // Send the Spline webhook first via backend proxy
+        // Save the goal to database using auth system first
+        console.log('💫 Saving guiding star goal:', goal.trim());
+        await auth.setGuidingStar(goal.trim());
+        console.log('✅ Guiding star saved successfully');
+
+        // Then send the Spline webhook for animation only
         await sendSplineWebhook();
 
         // Simulate a brief delay for better UX
         await new Promise(resolve => setTimeout(resolve, 500));
 
-        // Then submit the goal
+        // Submit the goal for UI handling (goal already saved above)
         onSubmit(goal.trim());
 
         setGoal('');
@@ -95,7 +98,7 @@ export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
         // onClose() will be called by SplineEventHandler after showing journey panel
       } catch (error) {
         console.error('Error in handleNext:', error);
-        setError(error instanceof Error ? error.message : 'User not authenticated - cannot save life goal');
+        setError('Failed to save life goal. Please try again.');
       } finally {
         setIsSubmitting(false);
       }

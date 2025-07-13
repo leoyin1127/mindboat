@@ -71,146 +71,14 @@ Deno.serve(async (req: Request) => {
     console.log('Payload received:', JSON.stringify(payload, null, 2))
     console.log('Timestamp:', new Date().toISOString())
 
-    // Get the JWT token from the Authorization header
-    const authHeader = req.headers.get('Authorization')
-    let userToken: string | null = null
-    
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      userToken = authHeader.substring(7)
-    }
-
     // Initialize Supabase client with service role for database operations
     const serviceRoleClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
     
-    // If goal_text is provided, store it in the database
-    if (payload.goal) {
-      // Validate goal_text is not empty
-      if (!payload.goal.trim()) {
-        return new Response(
-          JSON.stringify({ error: 'Goal text cannot be empty' }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        )
-      }
-      
-      // Get user from JWT token
-      if (!userToken) {
-        return new Response(
-          JSON.stringify({ error: 'Authentication required' }),
-          {
-            status: 401,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        )
-      }
-
-      // Initialize Supabase client with user auth
-      const userClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        {
-          global: {
-            headers: {
-              Authorization: `Bearer ${userToken}`
-            }
-          }
-        }
-      )
-
-      // Get current user
-      const { data: { user }, error: userError } = await userClient.auth.getUser()
-      if (userError || !user) {
-        return new Response(
-          JSON.stringify({ error: 'User not authenticated' }),
-          {
-            status: 401,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        )
-      }
-      
-      // Insert the goal into the Goals table
-      const { data: goalData, error: goalError } = await serviceRoleClient
-        .from('goals')
-        .insert({
-          user_id: user.id,
-          goal_text: payload.goal.trim()
-        })
-      
-      if (goalError) {
-        console.error('Error inserting goal:', goalError)
-        return new Response(
-          JSON.stringify({ 
-            error: 'Failed to save goal',
-            message: goalError.message
-          }),
-          {
-            status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        )
-      }
-      
-      console.log('Goal saved successfully:', goalData)
-      
-      // Trigger the Spline webhook after saving the goal
-      try {
-        const splineWebhookToken = Deno.env.get('SPLINE_GOAL_WEBHOOK_TOKEN')
-        if (!splineWebhookToken) {
-          console.warn('SPLINE_GOAL_WEBHOOK_TOKEN environment variable is not set')
-        }
-        
-        const splineResponse = await fetch('https://hooks.spline.design/gpRFQacPBZs', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Authorization': splineWebhookToken || 'QgxEuHaAD0fyTDdEAYvVH_ynObU2SUnWdip86Gb1RJE'
-          },
-          body: JSON.stringify({ number: 0 })
-        })
-        
-        const splineData = await splineResponse.json()
-        console.log('Spline webhook response:', splineData)
-        
-        // Return success response with Spline webhook result
-        return new Response(
-          JSON.stringify({
-            success: true,
-            message: 'Goal saved and Spline webhook triggered',
-            goalSaved: true,
-            splineWebhookResult: splineData
-          }),
-          {
-            status: 200,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        )
-      } catch (error) {
-        console.error('Error triggering Spline webhook:', error)
-        // Still return success for the goal saving part
-        return new Response(
-          JSON.stringify({
-            success: true,
-            message: 'Goal saved but Spline webhook failed',
-            goalSaved: true,
-            splineWebhookError: error.message
-          }),
-          {
-            status: 200,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        )
-      }
-    }
-
-    // If no goal_text is provided, proceed with the original functionality
-    // to trigger the life goals modal on the frontend
+    // This function only handles UI event broadcasting, not data saving
+    // Life goals are saved via auth.setGuidingStar() in the frontend
     
     // Create the goals event data
     const eventData = {
