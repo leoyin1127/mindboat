@@ -17,8 +17,25 @@ export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const sendSplineWebhook = async () => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/spline-proxy`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ number: 0 })
+      });
 
-  // We'll remove the sendSplineWebhook function since that's now handled by the goals-webhook function
+      if (!response.ok) {
+        throw new Error(`Spline webhook failed: ${response.status}`);
+      }
+    } catch (error) {
+      console.error('Error triggering Spline animation:', error);
+      // Don't throw - allow the flow to continue even if animation fails
+    }
+  };
 
 
   const handleSubmit = async (e: React.FormEvent) => {
