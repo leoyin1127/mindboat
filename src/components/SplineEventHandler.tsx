@@ -35,7 +35,7 @@ interface SplineEventHandlerProps {
 
 export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({ 
   onEventReceived,
-  onModalStateChange 
+  onModalStateChange,
 }) => {
   const [showModal, setShowModal] = useState(false)
   const [currentEvent, setCurrentEvent] = useState<SplineEvent | null>(null)
@@ -188,9 +188,35 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
     setCurrentEvent(null)
   }
 
-  const handleLifeGoalSubmit = (goal: string) => {
+  const handleLifeGoalSubmit = async (goal: string) => {
     console.log('Life goal submitted:', goal)
-    // Here you could save to Supabase database if needed
+    
+    try {
+      // Call the goals-webhook Edge Function with the goal text and device ID
+      const { data, error } = await supabase.functions.invoke('goals-webhook', {
+        body: { 
+          goal: goal
+        }
+      })
+      
+      if (error) {
+        console.error('Error saving life goal:', error)
+        throw new Error('User not authenticated - cannot save life goal')
+      }
+      
+      console.log('Life goal saved successfully:', data)
+      
+      // After successful life goal submission, automatically show journey panel
+      setShowLifeGoalsModal(false)
+      setTimeout(() => {
+        setShowJourneyPanel(true)
+      }, 300) // Small delay for smooth transition
+      
+      return true
+    } catch (error) {
+      console.error('Error invoking goals-webhook function:', error)
+      throw new Error('User not authenticated - cannot save life goal')
+    }
   }
 
   const handleVoiceSubmitSuccess = () => {

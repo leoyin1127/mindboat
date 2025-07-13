@@ -6,16 +6,42 @@ interface ControlPanelProps {
   isVisible: boolean;
   onClose?: () => void;
   onEndVoyage?: () => void;
+  sessionId?: string | null;
 }
 
 export const ControlPanel: React.FC<ControlPanelProps> = ({
   isVisible,
   onClose,
-  onEndVoyage
+  onEndVoyage,
+  sessionId
 }) => {
   const [micEnabled, setMicEnabled] = useState(false);
   const [videoEnabled, setVideoEnabled] = useState(false);
   const [screenShareEnabled, setScreenShareEnabled] = useState(false);
+  const [sessionDuration, setSessionDuration] = useState(0);
+
+  // Timer for session duration
+  React.useEffect(() => {
+    if (!sessionId) return;
+
+    const timer = setInterval(() => {
+      setSessionDuration(prev => prev + 1);
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [sessionId]);
+
+  const formatDuration = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    if (hours > 0) {
+      return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    } else {
+      return `${minutes}:${secs.toString().padStart(2, '0')}`;
+    }
+  };
 
   if (!isVisible) return null;
 
@@ -55,6 +81,13 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         
         {/* All buttons in a single horizontal row */}
         <div className="relative z-10 flex items-center gap-4">
+          {/* Session Timer */}
+          <div className="px-4 py-2 bg-gradient-to-br from-white/15 via-white/10 to-white/8
+                          backdrop-blur-md border border-white/25 rounded-xl
+                          text-white font-mono text-sm">
+            {formatDuration(sessionDuration)}
+          </div>
+
           {/* Microphone Control */}
           <button
             onClick={toggleMic}
