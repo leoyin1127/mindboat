@@ -11,18 +11,11 @@ function App() {
   React.useEffect(() => {
     const initializeAuth = async () => {
       try {
-        // Check for existing session
+        // Only check for existing session, don't create anonymous users
         const { data: { session } } = await supabase.auth.getSession();
-        
-        if (!session) {
-          // No session exists, create anonymous user
-          const { error } = await supabase.auth.signInAnonymously();
-          if (error) {
-            console.error('Error creating anonymous session:', error);
-          }
-        }
+        console.log('Session check completed:', session ? 'User authenticated' : 'No active session');
       } catch (error) {
-        console.error('Error initializing authentication:', error);
+        console.error('Error checking authentication:', error);
       } finally {
         setIsAuthLoading(false);
       }
