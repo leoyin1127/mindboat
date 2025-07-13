@@ -1,10 +1,6 @@
 ---
-description:
-globs:
-alwaysApply: false
+alwaysApply: true
 ---
-
-
 You are an expert in React, Vite, Tailwind CSS, three.js, React three fiber and Next UI.
   
 Key Principles
