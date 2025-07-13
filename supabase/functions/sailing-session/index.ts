@@ -21,7 +21,6 @@ const corsHeaders = {
 
 interface StartSessionRequest {
   action: 'start';
-  deviceId: string;
   taskId: string;
   permissions?: {
     camera: boolean;
@@ -85,13 +84,50 @@ Deno.serve(async (req: Request) => {
 
     if (requestData.action === 'start') {
       // Start new sailing session
-      const { deviceId, taskId, permissions } = requestData
+      const { taskId, permissions } = requestData
 
-      if (!deviceId || !taskId) {
+      if (!taskId) {
         return new Response(
-          JSON.stringify({ error: 'deviceId and taskId are required' }),
+          JSON.stringify({ error: 'taskId is required' }),
           {
             status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        )
+      }
+
+      // Get user from JWT token
+      const authHeader = req.headers.get('Authorization')
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return new Response(
+          JSON.stringify({ error: 'Authentication required' }),
+          {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        )
+      }
+
+      // Initialize Supabase client with user auth
+      const userClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        {
+          global: {
+            headers: {
+              Authorization: authHeader
+            }
+          }
+        }
+      )
+
+      // Get current user
+      const { data: { user }, error: userError } = await userClient.auth.getUser()
+      if (userError || !user) {
+        return new Response(
+          JSON.stringify({ error: 'User not authenticated' }),
+          {
+            status: 401,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           }
         )
@@ -101,7 +137,7 @@ Deno.serve(async (req: Request) => {
       const { data: sessionData, error: sessionError } = await supabase
         .from('sessions')
         .insert({
-          device_id: deviceId,
+          user_id: user.id,
           task_id: taskId,
           status: 'sailing',
           session_data: {

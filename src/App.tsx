@@ -1,34 +1,9 @@
 import React from 'react';
-import { supabase } from './lib/supabase';
 import { SplineScene } from './components/SplineScene';
 import { SplineEventHandler } from './components/SplineEventHandler';
 
-// Device ID management
-const generateDeviceId = () => {
-  return 'device_' + Math.random().toString(36).substr(2, 16) + '_' + Date.now().toString(36);
-};
-
-const getOrCreateDeviceId = () => {
-  let deviceId = localStorage.getItem('mindboat_device_id');
-  if (!deviceId) {
-    deviceId = generateDeviceId();
-    localStorage.setItem('mindboat_device_id', deviceId);
-    console.log('Created new device ID:', deviceId);
-  } else {
-    console.log('Using existing device ID:', deviceId);
-  }
-  return deviceId;
-};
-
 function App() {
   const [isModalOpen, setIsModalOpen] = React.useState(false);
-  const [deviceId, setDeviceId] = React.useState<string>('');
-
-  // Initialize device-based authentication on app start
-  React.useEffect(() => {
-    const id = getOrCreateDeviceId();
-    setDeviceId(id);
-  }, []);
 
   const handleSplineEvent = (event: any) => {
     console.log('Spline event received in App:', event);
@@ -49,15 +24,6 @@ function App() {
     };
   }, []);
 
-  // Don't render until device ID is ready
-  if (!deviceId) {
-    return (
-      <div className="h-screen bg-black flex items-center justify-center">
-        <div className="text-white">Initializing...</div>
-      </div>
-    );
-  }
-
   return (
     <div className="relative h-screen">
       {/* 3D Scene Background - 传递交互禁用状态 */}
@@ -67,7 +33,6 @@ function App() {
       <SplineEventHandler 
         onEventReceived={handleSplineEvent}
         onModalStateChange={setIsModalOpen}
-        deviceId={deviceId}
       />
 
       {/* Subtle gradient overlay for depth */}

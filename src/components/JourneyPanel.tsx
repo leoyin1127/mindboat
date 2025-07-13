@@ -83,7 +83,6 @@ const getCategoryIcon = (category: Task['category']) => {
 export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   isVisible,
   onClose,
-  deviceId
 }) => {
   const [selectedTask, setSelectedTask] = useState<Task>(mockTasks[0]);
   const [tasks, setTasks] = useState<Task[]>(mockTasks);
@@ -119,7 +118,6 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
         },
         body: JSON.stringify({
           action: 'start',
-          deviceId: deviceId,
           taskId: selectedTask.id,
           permissions: permissions
         })

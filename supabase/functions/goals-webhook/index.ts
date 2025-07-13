@@ -22,8 +22,7 @@ const corsHeaders = {
 }
 
 interface GoalsWebhookPayload {
-  goal_text?: string;
-  device_id?: string;
+  goal?: string;
   [key: string]: any;
 }
 
@@ -87,9 +86,9 @@ Deno.serve(async (req: Request) => {
     )
     
     // If goal_text is provided, store it in the database
-    if (payload.goal_text) {
+    if (payload.goal) {
       // Validate goal_text is not empty
-      if (!payload.goal_text.trim()) {
+      if (!payload.goal.trim()) {
         return new Response(
           JSON.stringify({ error: 'Goal text cannot be empty' }),
           {
@@ -99,12 +98,37 @@ Deno.serve(async (req: Request) => {
         )
       }
       
-      // Validate device_id is provided
-      if (!payload.device_id) {
+      // Get user from JWT token
+      if (!userToken) {
         return new Response(
-          JSON.stringify({ error: 'Device ID is required' }),
+          JSON.stringify({ error: 'Authentication required' }),
           {
-            status: 400,
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        )
+      }
+
+      // Initialize Supabase client with user auth
+      const userClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        {
+          global: {
+            headers: {
+              Authorization: `Bearer ${userToken}`
+            }
+          }
+        }
+      )
+
+      // Get current user
+      const { data: { user }, error: userError } = await userClient.auth.getUser()
+      if (userError || !user) {
+        return new Response(
+          JSON.stringify({ error: 'User not authenticated' }),
+          {
+            status: 401,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           }
         )
@@ -114,8 +138,8 @@ Deno.serve(async (req: Request) => {
       const { data: goalData, error: goalError } = await serviceRoleClient
         .from('goals')
         .insert({
-          device_id: payload.device_id,
-          goal_text: payload.goal_text.trim()
+          user_id: user.id,
+          goal_text: payload.goal.trim()
         })
       
       if (goalError) {

@@ -31,13 +31,11 @@ interface SplineEvent {
 interface SplineEventHandlerProps {
   onEventReceived?: (event: SplineEvent) => void
   onModalStateChange?: (isOpen: boolean) => void
-  deviceId: string
 }
 
 export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({ 
   onEventReceived,
   onModalStateChange,
-  deviceId
 }) => {
   const [showModal, setShowModal] = useState(false)
   const [currentEvent, setCurrentEvent] = useState<SplineEvent | null>(null)
@@ -193,17 +191,11 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
   const handleLifeGoalSubmit = async (goal: string) => {
     console.log('Life goal submitted:', goal)
     
-    // Check if device ID is available
-    if (!deviceId) {
-      throw new Error('User not authenticated - cannot save life goal')
-    }
-    
     try {
       // Call the goals-webhook Edge Function with the goal text and device ID
       const { data, error } = await supabase.functions.invoke('goals-webhook', {
         body: { 
-          goal: goal,
-          userId: deviceId
+          goal: goal
         }
       })
       
@@ -311,7 +303,6 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
       <JourneyPanel
         isVisible={showJourneyPanel}
         onClose={() => setShowJourneyPanel(false)}
-        deviceId={deviceId}
       />
 
       {/* Event Details Modal - Using transparent glass design system */}
