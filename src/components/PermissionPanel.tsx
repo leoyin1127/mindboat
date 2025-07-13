@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Mic, MicOff, Video, VideoOff, Monitor, MonitorOff, Check, X, AlertCircle } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, Monitor, MonitorOff, AlertCircle, Lock, Unlock } from 'lucide-react';
 
 interface PermissionStatus {
     microphone: 'granted' | 'denied' | 'prompt' | 'unknown';
@@ -49,7 +49,6 @@ export const PermissionPanel: React.FC<PermissionPanelProps> = ({
             }
 
             // Screen sharing permission can't be queried - we track if user has granted it
-            // If user hasn't requested screen sharing yet, it's unknown
             if (!hasRequestedScreen) {
                 setPermissions(prev => ({ ...prev, screen: 'unknown' }));
             }
@@ -184,14 +183,25 @@ export const PermissionPanel: React.FC<PermissionPanelProps> = ({
         return <IconComponent className="w-5 h-5" />;
     };
 
-    const getPermissionStatus = (status: string) => {
+    const getPermissionStatusColor = (status: string) => {
         switch (status) {
             case 'granted':
-                return { color: 'text-green-400', bg: 'bg-green-400/20 border-green-400/30', icon: Check };
+                return 'text-green-400';
             case 'denied':
-                return { color: 'text-red-400', bg: 'bg-red-400/20 border-red-400/30', icon: X };
+                return 'text-red-400';
             default:
-                return { color: 'text-yellow-400', bg: 'bg-yellow-400/20 border-yellow-400/30', icon: AlertCircle };
+                return 'text-yellow-400';
+        }
+    };
+
+    const getPermissionStatusBg = (status: string) => {
+        switch (status) {
+            case 'granted':
+                return 'bg-green-400/20 border-green-400/30';
+            case 'denied':
+                return 'bg-red-400/20 border-red-400/30';
+            default:
+                return 'bg-yellow-400/20 border-yellow-400/30';
         }
     };
 
@@ -208,202 +218,223 @@ export const PermissionPanel: React.FC<PermissionPanelProps> = ({
         }
     };
 
-    const canStartSailing = hasEssentialPermissions;
-
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-            {/* Backdrop */}
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose}></div>
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-[600px]">
+            {/* Enhanced glass panel with sophisticated design system */}
+            <div className="relative bg-gradient-to-br from-slate-500/20 via-slate-400/15 to-slate-600/25 
+                          backdrop-blur-2xl border border-white/25 rounded-3xl p-8
+                          shadow-[0_8px_32px_rgba(0,0,0,0.12),0_2px_16px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.15)]
+                          before:absolute before:inset-0 before:rounded-3xl 
+                          before:bg-gradient-to-br before:from-slate-400/10 before:via-transparent before:to-transparent 
+                          before:pointer-events-none overflow-hidden">
 
-            {/* Panel */}
-            <div className="relative bg-gradient-to-br from-slate-800/95 via-slate-700/90 to-slate-900/95 
-                      backdrop-blur-2xl border border-white/25 rounded-3xl p-8 max-w-md w-full mx-4
-                      shadow-[0_8px_32px_rgba(0,0,0,0.3)]">
+                {/* Inner glow overlay */}
+                <div className="absolute inset-0 bg-gradient-to-br from-slate-400/10 via-transparent to-transparent 
+                              rounded-3xl pointer-events-none" />
 
-                {/* Header */}
-                <div className="text-center mb-6">
-                    <h2 className="text-2xl font-playfair font-medium text-white mb-2">
-                        Media Permissions
-                    </h2>
-                    <p className="text-white/70 text-sm font-inter">
-                        Grant access to enable all sailing session features
-                    </p>
-                </div>
-
-                {/* Permission Items */}
-                <div className="space-y-4 mb-6">
-                    {/* Microphone - Required */}
-                    <div className="flex items-center justify-between p-4 rounded-xl bg-gradient-to-br from-white/10 to-white/5 border border-white/20">
-                        <div className="flex items-center gap-3">
-                            <div className={`p-2 rounded-lg ${getPermissionStatus(permissions.microphone).bg}`}>
-                                {getPermissionIcon(permissions.microphone, 'microphone')}
+                {/* Content */}
+                <div className="relative z-10">
+                    {/* Header */}
+                    <div className="text-center mb-8">
+                        <div className="flex items-center justify-center gap-3 mb-4">
+                            <div className="bg-gradient-to-br from-slate-500/20 via-slate-400/15 to-slate-600/25 
+                                          backdrop-blur-md rounded-2xl p-3 border border-white/25">
+                                <Lock className="w-6 h-6 text-white" />
                             </div>
-                            <div>
-                                <div className="text-white font-inter font-medium flex items-center gap-2">
-                                    Microphone
-                                    <span className="text-red-400 text-xs font-normal">Required</span>
-                                </div>
-                                <div className="text-white/60 text-xs">
-                                    {getPermissionText(permissions.microphone)} • Voice input & AI interaction
-                                </div>
-                            </div>
+                            <h2 className="text-2xl font-playfair font-medium text-white">
+                                Media Permissions
+                            </h2>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <div className={`p-1 rounded-full ${getPermissionStatus(permissions.microphone).color}`}>
-                                {React.createElement(getPermissionStatus(permissions.microphone).icon, { className: "w-4 h-4" })}
-                            </div>
-                            {permissions.microphone !== 'granted' && (
+                        <p className="text-white/70 text-sm font-inter">
+                            Grant access to enable all sailing session features
+                        </p>
+                    </div>
+
+                    {/* Permission Items */}
+                    <div className="space-y-4 mb-8">
+                        {/* Microphone - Required */}
+                        <div className="bg-gradient-to-br from-white/10 via-white/5 to-white/3 
+                                      backdrop-blur-lg border border-white/20 rounded-2xl p-5
+                                      shadow-[0_4px_16px_rgba(0,0,0,0.1),0_1px_4px_rgba(0,0,0,0.06)]">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className={`p-3 rounded-xl border backdrop-blur-md ${getPermissionStatusBg(permissions.microphone)}`}>
+                                        {getPermissionIcon(permissions.microphone, 'microphone')}
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-3 mb-1">
+                                            <span className="text-white font-inter font-medium">Microphone</span>
+                                            <span className="px-2 py-1 text-xs font-inter bg-red-400/20 text-red-400 
+                                                           rounded-full border border-red-400/30">
+                                                Required
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-sm text-white/60">
+                                            <span className={getPermissionStatusColor(permissions.microphone)}>
+                                                {getPermissionText(permissions.microphone)}
+                                            </span>
+                                            <span>•</span>
+                                            <span>Voice input & AI interaction</span>
+                                        </div>
+                                    </div>
+                                </div>
                                 <button
                                     onClick={() => requestPermission('microphone')}
-                                    disabled={isRequesting}
-                                    className="text-xs px-3 py-1 bg-blue-500/20 border border-blue-400/30 text-blue-400 
-                                             rounded-lg hover:bg-blue-500/30 disabled:opacity-50 transition-colors"
+                                    disabled={isRequesting || permissions.microphone === 'granted'}
+                                    className="bg-gradient-to-br from-white/15 via-white/10 to-white/8 
+                                             backdrop-blur-md border border-white/25 hover:from-white/20 
+                                             hover:via-white/15 hover:to-white/12 hover:border-white/35 
+                                             text-white/90 hover:text-white rounded-xl px-4 py-2 
+                                             transition-all duration-300 font-inter font-medium text-sm
+                                             disabled:opacity-50 disabled:cursor-not-allowed
+                                             shadow-[0_4px_16px_rgba(0,0,0,0.1),0_1px_4px_rgba(0,0,0,0.06)]"
                                 >
-                                    {isRequesting ? 'Requesting...' : 'Grant'}
+                                    {permissions.microphone === 'granted' ? 'Granted' : 'Allow'}
                                 </button>
-                            )}
+                            </div>
                         </div>
-                    </div>
 
-                    {/* Camera - Optional */}
-                    <div className="flex items-center justify-between p-4 rounded-xl bg-gradient-to-br from-white/10 to-white/5 border border-white/20">
-                        <div className="flex items-center gap-3">
-                            <div className={`p-2 rounded-lg ${getPermissionStatus(permissions.camera).bg}`}>
-                                {getPermissionIcon(permissions.camera, 'camera')}
-                            </div>
-                            <div>
-                                <div className="text-white font-inter font-medium flex items-center gap-2">
-                                    Camera
-                                    <span className="text-yellow-400 text-xs font-normal">Optional</span>
+                        {/* Camera - Optional */}
+                        <div className="bg-gradient-to-br from-white/10 via-white/5 to-white/3 
+                                      backdrop-blur-lg border border-white/20 rounded-2xl p-5
+                                      shadow-[0_4px_16px_rgba(0,0,0,0.1),0_1px_4px_rgba(0,0,0,0.06)]">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className={`p-3 rounded-xl border backdrop-blur-md ${getPermissionStatusBg(permissions.camera)}`}>
+                                        {getPermissionIcon(permissions.camera, 'camera')}
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-3 mb-1">
+                                            <span className="text-white font-inter font-medium">Camera</span>
+                                            <span className="px-2 py-1 text-xs font-inter bg-white/10 text-white/60 
+                                                           rounded-full border border-white/20">
+                                                Optional
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-sm text-white/60">
+                                            <span className={getPermissionStatusColor(permissions.camera)}>
+                                                {getPermissionText(permissions.camera)}
+                                            </span>
+                                            <span>•</span>
+                                            <span>Focus monitoring & insights</span>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="text-white/60 text-xs">
-                                    {getPermissionText(permissions.camera)} • Focus monitoring & drift detection
-                                </div>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className={`p-1 rounded-full ${getPermissionStatus(permissions.camera).color}`}>
-                                {React.createElement(getPermissionStatus(permissions.camera).icon, { className: "w-4 h-4" })}
-                            </div>
-                            {permissions.camera !== 'granted' && (
                                 <button
                                     onClick={() => requestPermission('camera')}
-                                    disabled={isRequesting}
-                                    className="text-xs px-3 py-1 bg-blue-500/20 border border-blue-400/30 text-blue-400 
-                                             rounded-lg hover:bg-blue-500/30 disabled:opacity-50 transition-colors"
+                                    disabled={isRequesting || permissions.camera === 'granted'}
+                                    className="bg-gradient-to-br from-white/15 via-white/10 to-white/8 
+                                             backdrop-blur-md border border-white/25 hover:from-white/20 
+                                             hover:via-white/15 hover:to-white/12 hover:border-white/35 
+                                             text-white/90 hover:text-white rounded-xl px-4 py-2 
+                                             transition-all duration-300 font-inter font-medium text-sm
+                                             disabled:opacity-50 disabled:cursor-not-allowed
+                                             shadow-[0_4px_16px_rgba(0,0,0,0.1),0_1px_4px_rgba(0,0,0,0.06)]"
                                 >
-                                    {isRequesting ? 'Requesting...' : 'Grant'}
+                                    {permissions.camera === 'granted' ? 'Granted' : 'Allow'}
                                 </button>
-                            )}
+                            </div>
                         </div>
-                    </div>
 
-                    {/* Screen Share - Optional */}
-                    <div className="flex items-center justify-between p-4 rounded-xl bg-gradient-to-br from-white/10 to-white/5 border border-white/20">
-                        <div className="flex items-center gap-3">
-                            <div className={`p-2 rounded-lg ${getPermissionStatus(permissions.screen).bg}`}>
-                                {getPermissionIcon(permissions.screen, 'screen')}
-                            </div>
-                            <div>
-                                <div className="text-white font-inter font-medium flex items-center gap-2">
-                                    Screen Sharing
-                                    <span className="text-yellow-400 text-xs font-normal">Optional</span>
+                        {/* Screen Sharing - Optional */}
+                        <div className="bg-gradient-to-br from-white/10 via-white/5 to-white/3 
+                                      backdrop-blur-lg border border-white/20 rounded-2xl p-5
+                                      shadow-[0_4px_16px_rgba(0,0,0,0.1),0_1px_4px_rgba(0,0,0,0.06)]">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className={`p-3 rounded-xl border backdrop-blur-md ${getPermissionStatusBg(permissions.screen)}`}>
+                                        {getPermissionIcon(permissions.screen, 'screen')}
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-3 mb-1">
+                                            <span className="text-white font-inter font-medium">Screen Sharing</span>
+                                            <span className="px-2 py-1 text-xs font-inter bg-white/10 text-white/60 
+                                                           rounded-full border border-white/20">
+                                                Optional
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-sm text-white/60">
+                                            <span className={getPermissionStatusColor(permissions.screen)}>
+                                                {getPermissionText(permissions.screen)}
+                                            </span>
+                                            <span>•</span>
+                                            <span>Activity monitoring & context</span>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="text-white/60 text-xs">
-                                    {getPermissionText(permissions.screen)} • Activity monitoring & context awareness
-                                </div>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className={`p-1 rounded-full ${getPermissionStatus(permissions.screen).color}`}>
-                                {React.createElement(getPermissionStatus(permissions.screen).icon, { className: "w-4 h-4" })}
-                            </div>
-                            {permissions.screen !== 'granted' && (
                                 <button
                                     onClick={() => requestPermission('screen')}
-                                    disabled={isRequesting}
-                                    className="text-xs px-3 py-1 bg-blue-500/20 border border-blue-400/30 text-blue-400 
-                                             rounded-lg hover:bg-blue-500/30 disabled:opacity-50 transition-colors"
+                                    disabled={isRequesting || permissions.screen === 'granted'}
+                                    className="bg-gradient-to-br from-white/15 via-white/10 to-white/8 
+                                             backdrop-blur-md border border-white/25 hover:from-white/20 
+                                             hover:via-white/15 hover:to-white/12 hover:border-white/35 
+                                             text-white/90 hover:text-white rounded-xl px-4 py-2 
+                                             transition-all duration-300 font-inter font-medium text-sm
+                                             disabled:opacity-50 disabled:cursor-not-allowed
+                                             shadow-[0_4px_16px_rgba(0,0,0,0.1),0_1px_4px_rgba(0,0,0,0.06)]"
                                 >
-                                    {isRequesting ? 'Requesting...' : 'Grant'}
+                                    {permissions.screen === 'granted' ? 'Granted' : 'Allow'}
                                 </button>
-                            )}
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                {/* Error Message */}
-                {error && (
-                    <div className="mb-6 p-3 bg-gradient-to-br from-red-500/20 via-red-400/15 to-red-600/25 
-                          backdrop-blur-md rounded-xl border border-red-400/30">
-                        <div className="flex items-center gap-2">
-                            <AlertCircle className="w-4 h-4 text-red-400" />
-                            <span className="text-red-100 font-inter text-sm">{error}</span>
+                    {/* Error Message */}
+                    {error && (
+                        <div className="mb-6 p-4 bg-red-400/20 border border-red-400/30 rounded-2xl 
+                                      backdrop-blur-md flex items-start gap-3">
+                            <AlertCircle className="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0" />
+                            <p className="text-red-400 text-sm font-inter">{error}</p>
                         </div>
-                    </div>
-                )}
-
-                {/* Permission Summary */}
-                <div className="mb-6 p-4 rounded-xl bg-gradient-to-br from-blue-500/10 to-blue-600/5 border border-blue-400/20">
-                    <div className="flex items-center gap-2 mb-2">
-                        <div className={`p-1 rounded-full ${hasEssentialPermissions ? 'text-green-400' : 'text-yellow-400'}`}>
-                            {hasEssentialPermissions ?
-                                <Check className="w-4 h-4" /> :
-                                <AlertCircle className="w-4 h-4" />
-                            }
-                        </div>
-                        <span className="text-white font-inter font-medium text-sm">
-                            {hasEssentialPermissions ? 'Ready to sail!' : 'Microphone required to start'}
-                        </span>
-                    </div>
-                    <div className="text-white/60 text-xs">
-                        {hasAllPermissions ?
-                            'All permissions granted. Full functionality available.' :
-                            hasEssentialPermissions ?
-                                'Essential permissions granted. Optional features may be limited.' :
-                                'Please grant microphone access to begin your sailing session.'
-                        }
-                    </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex gap-3">
-                    {!hasEssentialPermissions && (
-                        <button
-                            onClick={requestAllPermissions}
-                            disabled={isRequesting}
-                            className="flex-1 bg-gradient-to-r from-blue-500/30 to-blue-600/30 
-                                     hover:from-blue-500/40 hover:to-blue-600/40 
-                                     text-white font-inter font-medium py-3 px-6 rounded-xl 
-                                     border border-blue-400/30 transition-all duration-300 
-                                     disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {isRequesting ? 'Requesting Permissions...' : 'Grant All Permissions'}
-                        </button>
                     )}
 
-                    {canStartSailing && (
+                    {/* Action Buttons */}
+                    <div className="flex items-center justify-between gap-4">
                         <button
                             onClick={onClose}
-                            className="flex-1 bg-gradient-to-r from-green-500/30 to-green-600/30 
-                                     hover:from-green-500/40 hover:to-green-600/40 
-                                     text-white font-inter font-medium py-3 px-6 rounded-xl 
-                                     border border-green-400/30 transition-all duration-300"
+                            className="bg-gradient-to-br from-white/15 via-white/10 to-white/8 
+                                     backdrop-blur-md border border-white/25 hover:from-white/20 
+                                     hover:via-white/15 hover:to-white/12 hover:border-white/35 
+                                     text-white/90 hover:text-white rounded-xl px-6 py-3 
+                                     transition-all duration-300 font-inter font-medium
+                                     shadow-[0_4px_16px_rgba(0,0,0,0.1),0_1px_4px_rgba(0,0,0,0.06)]"
                         >
-                            Start Sailing
+                            {hasEssentialPermissions ? 'Continue' : 'Skip'}
                         </button>
-                    )}
 
-                    <button
-                        onClick={onClose}
-                        className="bg-gradient-to-br from-white/10 to-white/5 
-                                 hover:from-white/15 hover:to-white/10 
-                                 text-white/80 hover:text-white font-inter font-medium 
-                                 py-3 px-6 rounded-xl border border-white/20 
-                                 transition-all duration-300"
-                    >
-                        {canStartSailing ? 'Close' : 'Cancel'}
-                    </button>
+                        {!hasAllPermissions && (
+                            <button
+                                onClick={requestAllPermissions}
+                                disabled={isRequesting}
+                                className="bg-gradient-to-r from-blue-400/30 to-purple-400/30 
+                                         hover:from-blue-400/40 hover:to-purple-400/40 
+                                         text-white rounded-xl px-6 py-3 
+                                         transition-all duration-300 font-inter font-medium
+                                         shadow-[0_8px_24px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.08)] 
+                                         backdrop-blur-md border border-white/25
+                                         disabled:opacity-50 disabled:cursor-not-allowed
+                                         flex items-center gap-2"
+                            >
+                                <Unlock className="w-4 h-4" />
+                                {isRequesting ? 'Requesting...' : 'Allow All'}
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Status Summary */}
+                    <div className="mt-6 pt-6 border-t border-white/20">
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="text-white/60 font-inter">
+                                Permissions Status
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <div className={`w-2 h-2 rounded-full ${hasEssentialPermissions ? 'bg-green-400' : 'bg-red-400'}`} />
+                                <span className={`font-inter ${hasEssentialPermissions ? 'text-green-400' : 'text-red-400'}`}>
+                                    {hasEssentialPermissions ? 'Ready to sail' : 'Microphone required'}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
