@@ -51,7 +51,7 @@ Let Mindship convert your fleeting thoughts into a purposeful voyage—so every 
 
 ---
 
-## 2. Release Scope & Priorities
+## 2 Release Scope & Priorities
 
 | Phase                       | Core Features (IDs)                                                                                             | Priority              |
 | --------------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------- |
@@ -62,33 +62,32 @@ Let Mindship convert your fleeting thoughts into a purposeful voyage—so every 
 
 ---
 
-## 3. Functional Requirements
+## 2.1  System Architecture
 
-### 3.1 Phase 1 – Launch Prep
+| Layer                      | Responsibilities                                                                                             | Tech / Service                                                          |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| **Frontend (Web / React)** | UI, media capture, WebSocket (Supabase Realtime) sessions, client-side VAD, Spline animation triggers        | Vite + React, WebAudio/WebRTC, Supabase JS SDK                          |
+| **Supabase (BaaS)**        | Auth, Postgres DB, Storage (media), Edge Functions (secure 3rd-party calls), Realtime (broadcast / presence) | Supabase Edge Functions (Deno), Row Level Security                      |
+| **External Services**      | 3D animation, STT/LLM, speech synthesis                                                                      | Spline, Whisper (or Azure/ElevenLabs) via Edge Function proxy, Dify API |
 
-| ID    | Requirement                                                                                | Primary Actor |
-| ----- | ------------------------------------------------------------------------------------------ | ------------- |
-| 1.1   | Users can press **Start** to set or update their single “Guiding Star” goal.               | User          |
-| 1.2   | Users can record voice memos; the system extracts tasks and returns an ordered to-do list. | User          |
-| 1.2.2 | System can re-prioritize tasks through follow-up dialogue.                                 | System        |
+---
 
-### 3.2 Phase 2 – Daily Sailing
+## 3  Functional Requirements (MVP)
 
-| ID  | Requirement                                                                                                                          | Primary Actor |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------- |
-| 2.1 | Users launch a **Sailing Session** for a chosen task; session metadata is stored and a persistent connection is opened.              | User          |
-| 2.2 | During passive mode, background voice detection saves short speech snippets as text logs without UI interruption.                    | System        |
-| 2.3 | Users can enter active “Command Mode” via button or wake word to issue real-time voice commands and receive instant feedback.        | User          |
-| 2.4 | If continuous distraction > 10 min, the system initiates a two-way voice conversation with an AI mentor and streams audio both ways. | System        |
-| 2.5 | The app periodically captures screen-and-camera snapshots, checks for drift, updates session status, and triggers visual cues.       | System        |
+| ID         | Feature                               | Frontend Duties                                                                                                          | Supabase Duties (Edge / DB)                                                                                                                                 | External Calls    | Priority |
+| ---------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | -------- |
+| **FR-1.1** | **Set “Morning Star”**                | Call `rpc_set_goal()` with `{user_id, goal}`; trigger Spline intro                                                       | **Function:** insert row `goals`                                                                                                                            | Spline webhook    | P1       |
+| **FR-1.2** | **“Wind of Thought” – Voice → Tasks** | Record audio → upload to `storage.audio/` → invoke `edge_process_voice()`; render returned tasks                         | **Function:**<br>1. Download audio.<br>2. STT → text.<br>3. Dify “task decomposition”.<br>4. Insert tasks into `tasks`                                      | Whisper / Dify    | P1       |
+| **FR-2.1** | **Start Sailing Session**             | Request mic/cam/screen; call `rpc_start_session(task_id)`; open Supabase Realtime channel `session:{id}`; trigger Spline | Insert row in `sessions` with status `sailing`; broadcast `{event:"started"}`                                                                               | —                 | P1       |
+| **FR-2.2** | **Passive Listening**                 | Local VAD; on speech → upload audio → `edge_log_speech(session_id)`                                                      | STT → insert transcript into `logs` table                                                                                                                   | Whisper           | P1       |
+| **FR-2.3** | **Active Interaction**                | Stream mic chunks over Realtime channel; handle returned events (`RESUME_SAILING`, etc.)                                 | Edge Function via Realtime listener:<br>• STT → text<br>• Dify intent classification<br>• Update DB & broadcast action                                      | Dify              | P1       |
+| **FR-2.4** | **Deep Drift Intervention**           | Play AI speech from Realtime; continue duplex streaming                                                                  | Edge timer checks drift; when `≥10 min` drifting:<br>• Aggregate context<br>• Open duplex AI chat (Edge ↔ ElevenLabs)<br>• Relay audio chunks over Realtime | ElevenLabs / Dify | P1-max   |
+| **FR-2.5** | **Heartbeat & Drift Detection**       | Periodic screenshot+webcam capture → upload images → `edge_heartbeat(session_id)`                                        | Store metadata; every 60 s Edge job → Dify multimodal focus check; if drifting broadcast `DRIFT` event; write to `drift_events`                             | Dify multimodal   | P1-max   |
+| **FR-3.1** | **End Session & Summary**             | Call `rpc_end_session(session_id)`; close Realtime; display summary                                                      | Compute metrics in SQL (`duration`, `focus%`, `drifts`) and return JSON                                                                                     | —                 | P1       |
+| **FR-3.2** | **Inner World Map**                   | Fetch `select * from sessions where user_id=... order by start_time` and draw path                                       | Read-only SQL view; PostGIS optional for path geom                                                                                                          | —                 | P1       |
+| **FR-4.0** | **API Docs**                          | n/a                                                                                                                      | Edge auto-generate OpenAPI (Supabase CLI)                                                                                                                   | —                 | P2       |
 
-### 3.3 Phase 3 – Reflection & Growth
-
-| ID  | Requirement                                                                                     | Primary Actor |
-| --- | ----------------------------------------------------------------------------------------------- | ------------- |
-| 3.1 | Users can end a session and view a summary: total duration, focus time, drift count, key notes. | User          |
-| 3.2 | Users can open an **Inner World Map** showing all past sessions as connected voyage points.     | User          |
-
+> *All Edge Functions are written in Deno (TS) and deployed via `supabase functions deploy`.*
 ---
 
 ## 4. Non-Functional & Experience Requirements
