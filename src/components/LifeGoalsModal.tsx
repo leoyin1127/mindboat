@@ -4,7 +4,7 @@ import { Heart } from 'lucide-react';
 interface LifeGoalsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (goal: string) => Promise<boolean>; // Updated to return a Promise<boolean>
+  onSubmit: (goal: string) => Promise<void>;
 }
 
 export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
@@ -26,18 +26,12 @@ export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
     setError(null);
     
     try {
-      // Submit the goal and wait for the result
-      const success = await onSubmit(goal.trim());
-      
-      if (success) {
-        setGoal('');
-        onClose();
-      } else {
-        setError('Failed to save your life goal. Please try again.');
-      }
+      await onSubmit(goal.trim());
+      setGoal('');
+      onClose();
     } catch (error) {
       console.error('Error in handleSubmit:', error);
-      setError('An unexpected error occurred. Please try again.');
+      setError(error instanceof Error ? error.message : 'User not authenticated - cannot save life goal');
     } finally {
       setIsSubmitting(false);
     }
@@ -49,18 +43,12 @@ export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
       setError(null);
       
       try {
-        // Submit the goal and wait for the result
-        const success = await onSubmit(goal.trim());
-        
-        if (success) {
-          setGoal('');
-          onClose();
-        } else {
-          setError('Failed to save your life goal. Please try again.');
-        }
+        await onSubmit(goal.trim());
+        setGoal('');
+        onClose();
       } catch (error) {
         console.error('Error in handleNext:', error);
-        setError('An unexpected error occurred. Please try again.');
+        setError(error instanceof Error ? error.message : 'User not authenticated - cannot save life goal');
       } finally {
         setIsSubmitting(false);
       }

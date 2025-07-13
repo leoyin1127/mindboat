@@ -195,32 +195,28 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
     
     // Check if device ID is available
     if (!deviceId) {
-      console.error('Device ID not available - cannot save life goal')
-      return false
+      throw new Error('User not authenticated - cannot save life goal')
     }
     
     try {
       // Call the goals-webhook Edge Function with the goal text and device ID
       const { data, error } = await supabase.functions.invoke('goals-webhook', {
         body: { 
-          goal_text: goal,
-          device_id: deviceId
+          goal: goal,
+          userId: deviceId
         }
       })
       
       if (error) {
         console.error('Error saving life goal:', error)
-        // You could show an error notification here
-        return false
+        throw new Error('User not authenticated - cannot save life goal')
       }
       
       console.log('Life goal saved successfully:', data)
-      // You could show a success notification here
       return true
     } catch (error) {
       console.error('Error invoking goals-webhook function:', error)
-      // You could show an error notification here
-      return false
+      throw new Error('User not authenticated - cannot save life goal')
     }
   }
 
