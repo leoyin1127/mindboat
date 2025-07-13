@@ -311,6 +311,7 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
       <JourneyPanel
         isVisible={showJourneyPanel}
         onClose={() => setShowJourneyPanel(false)}
+        deviceId={deviceId}
       />
 
       {/* Event Details Modal - Using transparent glass design system */}
