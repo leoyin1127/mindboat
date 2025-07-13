@@ -28,7 +28,8 @@ export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
     try {
       await onSubmit(goal.trim());
       setGoal('');
-      onClose();
+      // Don't close immediately, let the parent handle the transition
+      // onClose() will be called by SplineEventHandler after showing journey panel
     } catch (error) {
       console.error('Error in handleSubmit:', error);
       setError(error instanceof Error ? error.message : 'User not authenticated - cannot save life goal');
@@ -45,7 +46,8 @@ export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
       try {
         await onSubmit(goal.trim());
         setGoal('');
-        onClose();
+        // Don't close immediately, let the parent handle the transition
+        // onClose() will be called by SplineEventHandler after showing journey panel
       } catch (error) {
         console.error('Error in handleNext:', error);
         setError(error instanceof Error ? error.message : 'User not authenticated - cannot save life goal');

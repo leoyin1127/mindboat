@@ -93,6 +93,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [sessionChannel, setSessionChannel] = useState<any>(null);
+  const [sailingModeActive, setSailingModeActive] = useState(false);
 
   const toggleTaskCompletion = (taskId: string) => {
     setTasks(prev => prev.map(task => 
@@ -101,7 +102,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   };
 
   const handleStartJourney = async () => {
-    console.log('Starting journey with task:', selectedTask.title);
+    console.log('Starting sailing session with task:', selectedTask.title);
     setShowPermissionsModal(true);
   };
 
@@ -138,7 +139,8 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
         channel.subscribe();
         setSessionChannel(channel);
         
-        // Hide the journey panel and show control panel
+        // Hide the journey panel, activate sailing mode, and show control panel
+        setSailingModeActive(true);
         setShowControlPanel(true);
         onClose?.();
       } else {
@@ -182,7 +184,8 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       setCurrentSessionId(null);
     }
     
-    // Hide control panel and show loading state
+    // Deactivate sailing mode, hide control panel and show loading state
+    setSailingModeActive(false);
     setShowControlPanel(false);
     setShowSummaryPanel(true);
     setIsLoadingSummary(true);
@@ -235,6 +238,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
     setShowSummaryPanel(false);
     setSummaryData(null);
     setCurrentSessionId(null);
+    setSailingModeActive(false);
     // Optionally return to journey panel or close entirely
     onClose?.();
   };
@@ -354,22 +358,35 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
                       <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
                     </div>
 
-                    {/* Start Journey Button - Removed justify-center to align with container edges */}
-                    <div className="pt-4">
-                      <button
-                        onClick={handleStartJourney}
-                        className="w-full px-6 py-3 bg-gradient-to-r from-blue-400/30 to-purple-400/30
-                                   hover:from-blue-400/40 hover:to-purple-400/40 text-white rounded-xl 
-                                   transition-all duration-300 font-inter font-medium text-base
-                                   shadow-[0_8px_24px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.08)] backdrop-blur-md
-                                   border border-white/25 hover:border-white/35
-                                   transform hover:scale-[1.02] active:scale-[0.98]
-                                   flex items-center justify-center gap-2"
-                      >
-                        <Sail className="w-5 h-5" />
-                        Start Sailing
-                      </button>
-                    </div>
+                    {/* Start Journey Button - Only show if not in sailing mode */}
+                    {!sailingModeActive && (
+                      <div className="pt-4">
+                        <button
+                          onClick={handleStartJourney}
+                          className="w-full px-6 py-3 bg-gradient-to-r from-blue-400/30 to-purple-400/30
+                                     hover:from-blue-400/40 hover:to-purple-400/40 text-white rounded-xl 
+                                     transition-all duration-300 font-inter font-medium text-base
+                                     shadow-[0_8px_24px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.08)] backdrop-blur-md
+                                     border border-white/25 hover:border-white/35
+                                     transform hover:scale-[1.02] active:scale-[0.98]
+                                     flex items-center justify-center gap-2"
+                        >
+                          <Sail className="w-5 h-5" />
+                          Start Sailing
+                        </button>
+                      </div>
+                    )}
+                    
+                    {/* Task selected message - Show when sailing mode is active */}
+                    {sailingModeActive && (
+                      <div className="pt-4 text-center">
+                        <div className="px-6 py-3 bg-gradient-to-br from-green-400/20 via-green-300/15 to-green-500/25
+                                       border border-green-300/30 text-white rounded-xl backdrop-blur-md
+                                       font-inter font-medium text-base">
+                          🚢 Sailing toward: {selectedTask.title}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

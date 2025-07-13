@@ -205,6 +205,13 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
       }
       
       console.log('Life goal saved successfully:', data)
+      
+      // After successful life goal submission, automatically show journey panel
+      setShowLifeGoalsModal(false)
+      setTimeout(() => {
+        setShowJourneyPanel(true)
+      }, 300) // Small delay for smooth transition
+      
       return true
     } catch (error) {
       console.error('Error invoking goals-webhook function:', error)
