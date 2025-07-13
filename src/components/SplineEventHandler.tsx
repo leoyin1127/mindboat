@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { X, Sparkles, Compass, Target, Heart, MessageCircle } from 'lucide-react'
 import { LifeGoalsModal } from './LifeGoalsModal'
@@ -33,9 +33,9 @@ interface SplineEventHandlerProps {
   onModalStateChange?: (isOpen: boolean) => void
 }
 
-export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({ 
+export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
   onEventReceived,
-  onModalStateChange 
+  onModalStateChange
 }) => {
   const [showModal, setShowModal] = useState(false)
   const [currentEvent, setCurrentEvent] = useState<SplineEvent | null>(null)
@@ -44,14 +44,19 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
   const [showJourneyPanel, setShowJourneyPanel] = useState(false)
   const [showSeagullPanel, setShowSeagullPanel] = useState(false)
 
+  // Event debouncing and filtering
+  const lastEventTimestamp = useRef<number>(0)
+  const lastEventType = useRef<string>('')
+  const eventDebounceMs = 2000 // 2 second debounce
+
   // Notify parent component of modal state changes
   useEffect(() => {
     const isAnyModalOpen = showModal || showLifeGoalsModal || showWelcomePanel || showJourneyPanel || showSeagullPanel;
     onModalStateChange?.(isAnyModalOpen);
-    
+
     // Also notify via custom event
-    const event = new CustomEvent('modalStateChange', { 
-      detail: { isOpen: isAnyModalOpen } 
+    const event = new CustomEvent('modalStateChange', {
+      detail: { isOpen: isAnyModalOpen }
     });
     window.dispatchEvent(event);
   }, [showModal, showLifeGoalsModal, showWelcomePanel, showJourneyPanel, showSeagullPanel, onModalStateChange]);
@@ -61,36 +66,68 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
 
     // Subscribe to Spline events via Supabase Realtime
     const channel = supabase.channel('spline-events')
-    
+
     channel
       .on('broadcast', { event: 'spline_interaction' }, (payload) => {
         const event = payload.payload as SplineEvent
-        
+
         console.log('=== FRONTEND RECEIVED SPLINE EVENT ===')
         console.log('Complete event:', JSON.stringify(event, null, 2))
-        
+
+        // Event debouncing and filtering
+        const now = Date.now()
+        const eventKey = `${event.type}_${event.payload.modalType || event.payload.number || 'unknown'}`
+
+        // Check if this is a duplicate event within debounce period
+        if (
+          now - lastEventTimestamp.current < eventDebounceMs &&
+          lastEventType.current === eventKey
+        ) {
+          console.log('⏰ Event debounced (duplicate within', eventDebounceMs, 'ms):', eventKey)
+          return
+        }
+
+        // Additional filtering for unwanted automatic events
+        // Only allow events with explicit user intention indicators
+        const hasUserIntention =
+          event.payload.apiEndpoint ||  // Came from explicit webhook
+          event.payload.uiAction ||     // Has explicit UI action
+          event.payload.voiceInteraction || // Voice interaction triggered
+          event.payload.buttonId ||     // Button was clicked
+          event.payload.numbaer5 === 0  // Seagull trigger
+
+        if (!hasUserIntention && (event.payload.number === 1 || event.payload.number === 2)) {
+          console.log('🚫 Event rejected (no user intention detected):', eventKey, 'payload:', event.payload)
+          return
+        }
+
+        // Update debounce tracking
+        lastEventTimestamp.current = now
+        lastEventType.current = eventKey
+
+        console.log('✅ Event accepted:', eventKey)
         setCurrentEvent(event)
-        
+
         // First close all modals to avoid conflicts
         setShowLifeGoalsModal(false)
         setShowWelcomePanel(false)
         setShowJourneyPanel(false)
         setShowSeagullPanel(false)
-        
+
         // Simplified and clear decision logic
         const apiEndpoint = event.payload.apiEndpoint
         const source = event.payload.source
         const modalType = event.payload.modalType
         const uiAction = event.payload.uiAction
-        
+
         let shouldShowWelcome = false
         let shouldShowGoals = false
         let shouldShowJourney = false
         let shouldShowSeagull = false
-        
+
         // Priority 1: Based on API endpoint and source exact matching
-        if (apiEndpoint === 'seagull-webhook' || source === 'seagull-webhook' || 
-            apiEndpoint === 'test-seagull-webhook' || source === 'test-seagull-webhook') {
+        if (apiEndpoint === 'seagull-webhook' || source === 'seagull-webhook' ||
+          apiEndpoint === 'test-seagull-webhook' || source === 'test-seagull-webhook') {
           shouldShowSeagull = true
         } else if (apiEndpoint === 'welcome-webhook' || source === 'welcome-webhook') {
           shouldShowWelcome = true
@@ -141,11 +178,11 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
         } else if (event.payload.number === 3) {
           shouldShowJourney = true
         }
-        // Default fallback
+        // No default fallback - only show modals for explicit triggers
         else {
-          shouldShowGoals = true
+          console.log('⚠️ No matching condition found for event, not showing any modal')
         }
-        
+
         // Execute decision - use delay to ensure state update
         setTimeout(() => {
           if (shouldShowSeagull) {
@@ -170,7 +207,7 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
             setShowSeagullPanel(false)
           }
         }, 100)
-        
+
         // Call the callback if provided
         onEventReceived?.(event)
       })
@@ -201,22 +238,22 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
 
   const getEventIcon = (event: SplineEvent) => {
     const { apiEndpoint, modalType, uiAction, source } = event.payload
-    
-    if (apiEndpoint === 'seagull-webhook' || source === 'seagull-webhook' || 
-        apiEndpoint === 'test-seagull-webhook' || source === 'test-seagull-webhook' ||
-        modalType === 'seagull' || uiAction === 'show_seagull') {
+
+    if (apiEndpoint === 'seagull-webhook' || source === 'seagull-webhook' ||
+      apiEndpoint === 'test-seagull-webhook' || source === 'test-seagull-webhook' ||
+      modalType === 'seagull' || uiAction === 'show_seagull') {
       return <MessageCircle className="w-6 h-6 text-blue-400" />
     }
-    if (apiEndpoint === 'welcome-webhook' || source === 'welcome-webhook' || 
-        modalType === 'welcome' || uiAction === 'show_welcome') {
+    if (apiEndpoint === 'welcome-webhook' || source === 'welcome-webhook' ||
+      modalType === 'welcome' || uiAction === 'show_welcome') {
       return <Compass className="w-6 h-6 text-blue-400" />
     }
-    if (apiEndpoint === 'goals-webhook' || source === 'goals-webhook' || 
-        modalType === 'goals' || uiAction === 'show_goals') {
+    if (apiEndpoint === 'goals-webhook' || source === 'goals-webhook' ||
+      modalType === 'goals' || uiAction === 'show_goals') {
       return <Target className="w-6 h-6 text-purple-400" />
     }
-    if (apiEndpoint === 'journey-webhook' || source === 'journey-webhook' || 
-        modalType === 'journey' || uiAction === 'show_journey') {
+    if (apiEndpoint === 'journey-webhook' || source === 'journey-webhook' ||
+      modalType === 'journey' || uiAction === 'show_journey') {
       return <Heart className="w-6 h-6 text-green-400" />
     }
     return <Sparkles className="w-6 h-6 text-white" />
@@ -224,22 +261,22 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
 
   const getEventTitle = (event: SplineEvent) => {
     const { apiEndpoint, modalType, uiAction, source, message } = event.payload
-    
-    if (apiEndpoint === 'seagull-webhook' || source === 'seagull-webhook' || 
-        apiEndpoint === 'test-seagull-webhook' || source === 'test-seagull-webhook' ||
-        modalType === 'seagull' || uiAction === 'show_seagull') {
+
+    if (apiEndpoint === 'seagull-webhook' || source === 'seagull-webhook' ||
+      apiEndpoint === 'test-seagull-webhook' || source === 'test-seagull-webhook' ||
+      modalType === 'seagull' || uiAction === 'show_seagull') {
       return "Seagull Voice Assistant!"
     }
-    if (apiEndpoint === 'welcome-webhook' || source === 'welcome-webhook' || 
-        modalType === 'welcome' || uiAction === 'show_welcome') {
+    if (apiEndpoint === 'welcome-webhook' || source === 'welcome-webhook' ||
+      modalType === 'welcome' || uiAction === 'show_welcome') {
       return "Welcome Aboard!"
     }
-    if (apiEndpoint === 'goals-webhook' || source === 'goals-webhook' || 
-        modalType === 'goals' || uiAction === 'show_goals') {
+    if (apiEndpoint === 'goals-webhook' || source === 'goals-webhook' ||
+      modalType === 'goals' || uiAction === 'show_goals') {
       return "Life Goals!"
     }
-    if (apiEndpoint === 'journey-webhook' || source === 'journey-webhook' || 
-        modalType === 'journey' || uiAction === 'show_journey') {
+    if (apiEndpoint === 'journey-webhook' || source === 'journey-webhook' ||
+      modalType === 'journey' || uiAction === 'show_journey') {
       return "Journey Panel!"
     }
     if (message) return message
@@ -253,7 +290,7 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
     if (event.payload.modalType) parts.push(`Modal: ${event.payload.modalType}`)
     if (event.payload.uiAction) parts.push(`Action: ${event.payload.uiAction}`)
     if (event.payload.numbaer5 !== undefined) parts.push(`numbaer5: ${event.payload.numbaer5}`)
-    
+
     return parts.length > 0 ? parts.join(' • ') : 'Interactive element activated'
   }
 
@@ -291,10 +328,10 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className={`${getPanelStyle()} p-8 max-w-md w-full mx-4 
                           transform transition-all duration-300 scale-100`}>
-            
+
             {/* Very subtle inner glow overlay */}
             <div className={designSystem.patterns.innerGlow}></div>
-            
+
             <div className="flex items-center justify-between mb-6 relative z-10">
               <div className={`flex items-center gap-3 ${designSystem.colors.text.primary}`}>
                 {getEventIcon(currentEvent)}
@@ -313,7 +350,7 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
 
             <div className={`space-y-4 ${designSystem.colors.text.muted} relative z-10`}>
               <p className={designSystem.typography.sizes.lg}>{getEventDescription(currentEvent)}</p>
-              
+
               <div className={`${designSystem.colors.glass.secondary} ${designSystem.effects.blur.sm} 
                               ${designSystem.radius.md} p-4 border ${designSystem.colors.borders.glass}`}>
                 <h3 className={`${designSystem.typography.weights.medium} mb-2 ${designSystem.colors.text.primary}`}>

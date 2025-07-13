@@ -60,8 +60,8 @@ export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
       await auth.setGuidingStar(goal.trim());
       console.log('✅ Guiding star saved successfully');
 
-      // Send the Spline webhook for animation
-      await sendSplineWebhook();
+      // NOTE: Do NOT send Spline webhook here - only save to database
+      // The webhook should only be sent when Next button is clicked
 
       // Simulate a brief delay for better UX
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -86,7 +86,12 @@ export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
       setIsSubmitting(true);
 
       try {
-        // Send the Spline webhook first via backend proxy
+        // Save the goal to database first
+        console.log('💫 Saving guiding star goal:', goal.trim());
+        await auth.setGuidingStar(goal.trim());
+        console.log('✅ Guiding star saved successfully');
+
+        // Send the Spline webhook for scene change
         await sendSplineWebhook();
 
         // Simulate a brief delay for better UX
@@ -98,6 +103,10 @@ export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
         onClose();
       } catch (error) {
         console.error('Error in handleNext:', error);
+        // Still proceed with UI flow even if there's an error
+        onSubmit(goal.trim());
+        setGoal('');
+        onClose();
       } finally {
         setIsSubmitting(false);
       }

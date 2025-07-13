@@ -79,7 +79,7 @@ CREATE TRIGGER update_tasks_updated_at
 CREATE TABLE voice_thoughts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    audio_url TEXT NOT NULL, -- Supabase storage URL
+    audio_url TEXT, -- Supabase storage URL (nullable for Web Speech API)
     transcript TEXT,
     duration_seconds INTEGER,
     processed BOOLEAN DEFAULT false,
@@ -292,6 +292,32 @@ CREATE POLICY media_files_policy ON media_files
     FOR ALL USING (user_id = current_setting('app.current_user_id', true)::uuid);
 
 -- ===============================
+-- 8. STORAGE BUCKETS
+-- ===============================
+
+-- Create storage bucket for audio files
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('audio', 'audio', true);
+
+-- Storage policies for audio bucket
+CREATE POLICY "Users can upload audio files" ON storage.objects
+FOR INSERT WITH CHECK (
+  bucket_id = 'audio' AND 
+  auth.uid() IS NOT NULL
+);
+
+CREATE POLICY "Users can read audio files" ON storage.objects
+FOR SELECT USING (
+  bucket_id = 'audio'
+);
+
+CREATE POLICY "Users can delete their own audio files" ON storage.objects
+FOR DELETE USING (
+  bucket_id = 'audio' AND 
+  auth.uid() IS NOT NULL
+);
+
+-- ===============================
 -- 9. PERFORMANCE OPTIMIZATIONS
 -- ===============================
 
@@ -469,14 +495,14 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- ===============================
--- 11. VERSION TRACKING
+-- 9. SCHEMA VERSIONING
 -- ===============================
 
--- Version tracking
+-- Schema version tracking
 CREATE TABLE schema_versions (
-    version INTEGER PRIMARY KEY,
-    description TEXT,
-    applied_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+  version INTEGER PRIMARY KEY,
+  description TEXT NOT NULL,
+  applied_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 INSERT INTO schema_versions (version, description) 
