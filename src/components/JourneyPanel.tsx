@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Compass, CheckCircle, Circle, Mail as Sail, Mountain, BookOpen, Palette, GripVertical, Trash2, X } from 'lucide-react';
+import { Compass, CheckCircle, Circle, Mail as Sail, Mountain, BookOpen, Palette, GripVertical, X } from 'lucide-react';
 import { ControlPanel } from './ControlPanel';
 import { SailingSummaryPanel } from './SailingSummaryPanel';
 import { auth } from '../lib/auth';
@@ -446,71 +446,103 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
                       <div className="flex-1 overflow-y-auto max-h-96 space-y-2 pr-2 
                                       scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent">
                         {tasks.map((task, index) => (
-                          <div
-                            key={task.id}
-                            draggable
-                            onDragStart={() => handleDragStart(task)}
-                            onDragOver={(e) => handleDragOver(e, index)}
-                            onDragLeave={handleDragLeave}
-                            onDrop={(e) => handleDrop(e, index)}
-                            onDragEnd={handleDragEnd}
-                            className={`relative group transition-all duration-300 
-                                        ${dragOverIndex === index ? 'scale-105 shadow-lg' : ''}
-                                        ${draggedTask?.id === task.id ? 'opacity-50' : ''}`}
-                          >
-                            <button
-                              onClick={() => setSelectedTask(task)}
-                              className={`w-full text-left p-4 rounded-xl transition-all duration-300 
+                          <div key={task.id} className="relative">
+                            {/* Drop indicator line - shows above current item */}
+                            {draggedTask && dragOverIndex === index && (
+                              <div className="absolute -top-1 left-0 right-0 z-10 flex items-center">
+                                <div className="flex-1 h-0.5 bg-gradient-to-r from-transparent via-blue-400 to-transparent rounded-full opacity-80"></div>
+                                <div className="absolute left-1/2 transform -translate-x-1/2 -top-1">
+                                  <div className="w-2 h-2 bg-blue-400 rounded-full shadow-lg"></div>
+                                </div>
+                              </div>
+                            )}
+
+                            <div
+                              draggable
+                              onDragStart={() => handleDragStart(task)}
+                              onDragOver={(e) => handleDragOver(e, index)}
+                              onDragLeave={handleDragLeave}
+                              onDrop={(e) => handleDrop(e, index)}
+                              onDragEnd={handleDragEnd}
+                              className={`relative group transition-all duration-300 
+                                          ${dragOverIndex === index ? 'scale-105 shadow-lg' : ''}
+                                          ${draggedTask?.id === task.id ? 'opacity-50' : ''}`}
+                            >
+                              <button
+                                onClick={() => setSelectedTask(task)}
+                                className={`w-full text-left p-4 rounded-xl transition-all duration-300 
                                           border backdrop-blur-md font-inter text-sm relative
                                           ${selectedTask.id === task.id
-                                  ? 'bg-gradient-to-br from-slate-500/30 via-slate-400/25 to-slate-600/35 border-white/30 text-white shadow-md'
-                                  : 'bg-gradient-to-br from-slate-500/15 via-slate-400/10 to-slate-600/20 border-white/20 text-white/80 hover:from-slate-500/20 hover:via-slate-400/15 hover:to-slate-600/25 hover:border-white/30'
-                                }`}
-                            >
-                              {/* Drag handle */}
-                              <div className="absolute left-1 top-1/2 transform -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing">
-                                <GripVertical className="w-3 h-3 text-white/40" />
-                              </div>
-
-                              {/* Delete button */}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  deleteTask(task.id);
-                                }}
-                                className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity 
-                                           text-white/40 hover:text-red-400 z-10"
+                                    ? 'bg-gradient-to-br from-slate-500/30 via-slate-400/25 to-slate-600/35 border-white/30 text-white shadow-md'
+                                    : 'bg-gradient-to-br from-slate-500/15 via-slate-400/10 to-slate-600/20 border-white/20 text-white/80 hover:from-slate-500/20 hover:via-slate-400/15 hover:to-slate-600/25 hover:border-white/30'
+                                  }`}
                               >
-                                <X className="w-4 h-4" />
-                              </button>
+                                {/* Drag handle */}
+                                <div className="absolute left-1 top-1/2 transform -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing">
+                                  <GripVertical className="w-3 h-3 text-white/40" />
+                                </div>
 
-                              <div className="flex items-center gap-2 mb-1 ml-4">
+                                {/* Delete button */}
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    toggleTaskCompletion(task.id);
+                                    deleteTask(task.id);
                                   }}
-                                  className="text-white/60 hover:text-white transition-colors"
+                                  className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity 
+                                           text-white/40 hover:text-red-400 z-10"
                                 >
-                                  {task.completed ? (
-                                    <CheckCircle className="w-4 h-4 text-green-400" />
-                                  ) : (
-                                    <Circle className="w-4 h-4" />
-                                  )}
+                                  <X className="w-4 h-4" />
                                 </button>
-                                <div className={getPriorityColor(task.priority)}>
-                                  {getCategoryIcon(task.priority)}
+
+                                <div className="flex items-center gap-2 mb-1 ml-4">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      toggleTaskCompletion(task.id);
+                                    }}
+                                    className="text-white/60 hover:text-white transition-colors"
+                                  >
+                                    {task.completed ? (
+                                      <CheckCircle className="w-4 h-4 text-green-400" />
+                                    ) : (
+                                      <Circle className="w-4 h-4" />
+                                    )}
+                                  </button>
+                                  <div className={getPriorityColor(task.priority)}>
+                                    {getCategoryIcon(task.priority)}
+                                  </div>
                                 </div>
-                              </div>
-                              <div className={`ml-4 ${task.completed ? 'line-through opacity-60' : ''}`}>
-                                <div className="font-medium pr-6">{task.title}</div>
-                                <div className="text-xs text-white/60 mt-1">
-                                  {getPriorityText(task.priority)}
+                                <div className={`ml-4 ${task.completed ? 'line-through opacity-60' : ''}`}>
+                                  <div className="font-medium pr-6">{task.title}</div>
+                                  <div className="text-xs text-white/60 mt-1">
+                                    {getPriorityText(task.priority)}
+                                  </div>
                                 </div>
-                              </div>
-                            </button>
+                              </button>
+                            </div>
                           </div>
                         ))}
+
+                        {/* Drop indicator at the bottom - shows when dragging over the area below the last item */}
+                        {draggedTask && dragOverIndex === tasks.length && (
+                          <div className="relative mt-2">
+                            <div className="flex items-center">
+                              <div className="flex-1 h-0.5 bg-gradient-to-r from-transparent via-blue-400 to-transparent rounded-full opacity-80"></div>
+                              <div className="absolute left-1/2 transform -translate-x-1/2 -top-1">
+                                <div className="w-2 h-2 bg-blue-400 rounded-full shadow-lg"></div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Drop zone at the bottom for dropping after the last item */}
+                        {draggedTask && (
+                          <div
+                            onDragOver={(e) => handleDragOver(e, tasks.length)}
+                            onDrop={(e) => handleDrop(e, tasks.length)}
+                            className="h-8 -mt-2"
+                          />
+                        )}
                       </div>
                     </div>
 
