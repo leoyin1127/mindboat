@@ -110,6 +110,21 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
     setShowPermissionsModal(false);
 
     try {
+      // First, trigger Spline animation for starting sailing
+      console.log('Triggering Spline sailing animation...');
+      await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/spline-proxy`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          webhookUrl: 'https://hooks.spline.design/vS-vioZuERs',
+          payload: { numbaer2: 0 }
+        })
+      });
+      console.log('Spline sailing animation triggered successfully');
+
       // Start sailing session
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sailing-session`, {
         method: 'POST',
