@@ -44,11 +44,24 @@ export const WelcomePanel: React.FC<WelcomePanelProps> = ({
     setIsRecording(false);
     setIsListening(false);
     setIsProcessing(false);
+
+    // Clean up timers
     if (timerRef.current) {
       clearInterval(timerRef.current);
+      timerRef.current = null;
     }
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+
+    // Stop speech recognition if it's running
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (error) {
+        console.warn('Error stopping speech recognition during error handling:', error);
+      }
     }
   };
 
@@ -73,13 +86,8 @@ export const WelcomePanel: React.FC<WelcomePanelProps> = ({
     }
   };
 
+  // Initialize Web Speech API once on component mount
   useEffect(() => {
-    // Clear error when component mounts or becomes visible
-    if (isVisible) {
-      clearError();
-    }
-
-    // Initialize Web Speech API
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       recognitionRef.current = new SpeechRecognition();
@@ -119,9 +127,11 @@ export const WelcomePanel: React.FC<WelcomePanelProps> = ({
           }
           if (timerRef.current) {
             clearInterval(timerRef.current);
+            timerRef.current = null;
           }
           if (timeoutRef.current) {
             clearTimeout(timeoutRef.current);
+            timeoutRef.current = null;
           }
         };
       }
@@ -140,7 +150,14 @@ export const WelcomePanel: React.FC<WelcomePanelProps> = ({
         recognitionRef.current.stop();
       }
     };
-  }, [isVisible, isRecording]);
+  }, []); // Remove dependencies to prevent recreation
+
+  // Clear error when component becomes visible
+  useEffect(() => {
+    if (isVisible) {
+      clearError();
+    }
+  }, [isVisible]);
 
   const handleNext = () => {
     clearError();
@@ -153,8 +170,33 @@ export const WelcomePanel: React.FC<WelcomePanelProps> = ({
       return;
     }
 
+    // Prevent starting if already recording
+    if (isRecording || isListening) {
+      console.log('Speech recognition is already running, ignoring start request');
+      return;
+    }
+
     try {
       clearError();
+
+      // Request microphone permissions explicitly
+      try {
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (permissionError) {
+        console.error('Microphone permission denied:', permissionError);
+        handleError('speech', 'Microphone access denied. Please allow microphone access and try again.', true);
+        return;
+      }
+
+      // Stop any existing recognition first
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+
+      // Wait a bit to ensure previous recognition is fully stopped
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Reset state
       setIsRecording(true);
       setIsListening(true);
       setTranscript('');
@@ -171,6 +213,7 @@ export const WelcomePanel: React.FC<WelcomePanelProps> = ({
         handleError('speech', 'Recording timed out. Please try again with a shorter message.', true);
       }, RECORDING_TIMEOUT);
 
+      // Start speech recognition
       recognitionRef.current.start();
     } catch (error) {
       console.error('Error starting speech recognition:', error);
@@ -179,19 +222,29 @@ export const WelcomePanel: React.FC<WelcomePanelProps> = ({
   };
 
   const stopRecording = () => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-    }
-    setIsRecording(false);
-    setIsListening(false);
-    setHasRecorded(true);
-
+    // Clean up timers first
     if (timerRef.current) {
       clearInterval(timerRef.current);
+      timerRef.current = null;
     }
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
     }
+
+    // Stop speech recognition
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (error) {
+        console.warn('Error stopping speech recognition:', error);
+      }
+    }
+
+    // Update state
+    setIsRecording(false);
+    setIsListening(false);
+    setHasRecorded(true);
   };
 
   const formatTime = (seconds: number) => {
@@ -319,17 +372,32 @@ export const WelcomePanel: React.FC<WelcomePanelProps> = ({
   };
 
   const handleReRecord = () => {
+    // Reset all state
     setHasRecorded(false);
     setRecordingTime(0);
     setIsRecording(false);
+    setIsListening(false);
     setTranscript('');
     setRetryCount(0);
     clearError();
+
+    // Clean up timers
     if (timerRef.current) {
       clearInterval(timerRef.current);
+      timerRef.current = null;
     }
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+
+    // Stop speech recognition if it's running
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (error) {
+        console.warn('Error stopping speech recognition during re-record:', error);
+      }
     }
   };
 
