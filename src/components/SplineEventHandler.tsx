@@ -35,7 +35,7 @@ interface SplineEventHandlerProps {
 
 export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({ 
   onEventReceived,
-  onModalStateChange,
+  onModalStateChange 
 }) => {
   const [showModal, setShowModal] = useState(false)
   const [currentEvent, setCurrentEvent] = useState<SplineEvent | null>(null)
@@ -188,17 +188,9 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
     setCurrentEvent(null)
   }
 
-  const handleLifeGoalSubmit = async (goal: string) => {
+  const handleLifeGoalSubmit = (goal: string) => {
     console.log('Life goal submitted:', goal)
-    
-    // Life goal is already saved by LifeGoalsModal using auth.setGuidingStar
-    // This function only handles UI transitions
-    
-    // After successful life goal submission, automatically show journey panel
-    setShowLifeGoalsModal(false)
-    setTimeout(() => {
-      setShowJourneyPanel(true)
-    }, 300) // Small delay for smooth transition
+    // Here you could save to Supabase database if needed
   }
 
   const handleVoiceSubmitSuccess = () => {

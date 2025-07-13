@@ -3,8 +3,6 @@ import { Compass, CheckCircle, Circle, Mail as Sail, Mountain, BookOpen, Palette
 import { designSystem, getButtonStyle, getPanelStyle, getIconContainerStyle, getInnerGlowStyle } from '../styles/designSystem';
 import { ControlPanel } from './ControlPanel';
 import { SailingSummaryPanel } from './SailingSummaryPanel';
-import { PermissionsModal } from './PermissionsModal';
-import { supabase } from '../lib/supabase';
 
 interface Task {
   id: string;
@@ -82,18 +80,14 @@ const getCategoryIcon = (category: Task['category']) => {
 
 export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   isVisible,
-  onClose,
+  onClose
 }) => {
   const [selectedTask, setSelectedTask] = useState<Task>(mockTasks[0]);
   const [tasks, setTasks] = useState<Task[]>(mockTasks);
   const [showControlPanel, setShowControlPanel] = useState(false);
   const [showSummaryPanel, setShowSummaryPanel] = useState(false);
-  const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [summaryData, setSummaryData] = useState<SailingSummaryData | null>(null);
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-  const [sessionChannel, setSessionChannel] = useState<any>(null);
-  const [sailingModeActive, setSailingModeActive] = useState(false);
 
   const toggleTaskCompletion = (taskId: string) => {
     setTasks(prev => prev.map(task => 
@@ -102,105 +96,41 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   };
 
   const handleStartJourney = async () => {
-    console.log('Starting sailing session with task:', selectedTask.title);
-    setShowPermissionsModal(true);
-  };
-
-  const handlePermissionsGranted = async (permissions: any) => {
-    setShowPermissionsModal(false);
-
+    console.log('Starting journey with task:', selectedTask.title);
+    
     try {
-      // First, trigger Spline animation for starting sailing
-      console.log('Triggering Spline sailing animation...');
-      await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/spline-proxy`, {
+      // Send webhook via backend proxy
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/spline-proxy`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
-        body: JSON.stringify({
+        body: JSON.stringify({ 
           webhookUrl: 'https://hooks.spline.design/vS-vioZuERs',
           payload: { numbaer2: 0 }
-        })
-      });
-      console.log('Spline sailing animation triggered successfully');
-
-      // Start sailing session
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sailing-session`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({
-          action: 'start',
-          taskId: selectedTask.id,
-          permissions: permissions
         })
       });
 
       if (response.ok) {
         const responseData = await response.json();
-        console.log('Sailing session started successfully:', responseData);
-        
-        setCurrentSessionId(responseData.sessionId);
-        
-        // Set up real-time channel for session updates
-        const channel = supabase.channel(responseData.channelName);
-        channel.on('broadcast', { event: 'session_update' }, (payload) => {
-          console.log('Session update received:', payload);
-          // Handle real-time session updates here
-        });
-        channel.subscribe();
-        setSessionChannel(channel);
-        
-        // Hide the journey panel, activate sailing mode, and show control panel
-        setSailingModeActive(true);
-        setShowControlPanel(true);
-        onClose?.();
+        console.log('Journey webhook sent successfully:', responseData);
       } else {
-        console.error('Failed to start sailing session:', response.status, response.statusText);
-        alert('Failed to start sailing session. Please try again.');
+        console.error('Failed to send journey webhook:', response.status, response.statusText);
       }
     } catch (error) {
-      console.error('Error starting sailing session:', error);
-      alert('Failed to start sailing session. Please try again.');
+      console.error('Error sending journey webhook:', error);
     }
+    
+    // Hide the journey panel and show control panel
+    setShowControlPanel(true);
+    onClose?.();
   };
 
   const handleEndVoyage = async () => {
     console.log('Ending voyage...');
     
-    // Update session status to completed
-    if (currentSessionId) {
-      try {
-        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sailing-session`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({
-            action: 'update',
-            sessionId: currentSessionId,
-            status: 'completed'
-          })
-        });
-      } catch (error) {
-        console.error('Failed to update session status:', error);
-      }
-      
-      // Clean up real-time channel
-      if (sessionChannel) {
-        sessionChannel.unsubscribe();
-        setSessionChannel(null);
-      }
-      
-      setCurrentSessionId(null);
-    }
-    
-    // Deactivate sailing mode, hide control panel and show loading state
-    setSailingModeActive(false);
+    // Hide control panel and show loading state
     setShowControlPanel(false);
     setShowSummaryPanel(true);
     setIsLoadingSummary(true);
@@ -252,16 +182,14 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   const handleCloseSummary = () => {
     setShowSummaryPanel(false);
     setSummaryData(null);
-    setCurrentSessionId(null);
-    setSailingModeActive(false);
     // Optionally return to journey panel or close entirely
     onClose?.();
   };
 
   // Show journey panel only if it's visible and no other panels are showing
-  const shouldShowJourneyPanel = isVisible && !showControlPanel && !showSummaryPanel && !showPermissionsModal;
+  const shouldShowJourneyPanel = isVisible && !showControlPanel && !showSummaryPanel;
 
-  if (!shouldShowJourneyPanel && !showControlPanel && !showSummaryPanel && !showPermissionsModal) return null;
+  if (!shouldShowJourneyPanel && !showControlPanel && !showSummaryPanel) return null;
 
   return (
     <>
@@ -373,35 +301,22 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
                       <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
                     </div>
 
-                    {/* Start Journey Button - Only show if not in sailing mode */}
-                    {!sailingModeActive && (
-                      <div className="pt-4">
-                        <button
-                          onClick={handleStartJourney}
-                          className="w-full px-6 py-3 bg-gradient-to-r from-blue-400/30 to-purple-400/30
-                                     hover:from-blue-400/40 hover:to-purple-400/40 text-white rounded-xl 
-                                     transition-all duration-300 font-inter font-medium text-base
-                                     shadow-[0_8px_24px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.08)] backdrop-blur-md
-                                     border border-white/25 hover:border-white/35
-                                     transform hover:scale-[1.02] active:scale-[0.98]
-                                     flex items-center justify-center gap-2"
-                        >
-                          <Sail className="w-5 h-5" />
-                          Start Sailing
-                        </button>
-                      </div>
-                    )}
-                    
-                    {/* Task selected message - Show when sailing mode is active */}
-                    {sailingModeActive && (
-                      <div className="pt-4 text-center">
-                        <div className="px-6 py-3 bg-gradient-to-br from-green-400/20 via-green-300/15 to-green-500/25
-                                       border border-green-300/30 text-white rounded-xl backdrop-blur-md
-                                       font-inter font-medium text-base">
-                          🚢 Sailing toward: {selectedTask.title}
-                        </div>
-                      </div>
-                    )}
+                    {/* Start Journey Button - Removed justify-center to align with container edges */}
+                    <div className="pt-4">
+                      <button
+                        onClick={handleStartJourney}
+                        className="w-full px-6 py-3 bg-gradient-to-r from-blue-400/30 to-purple-400/30
+                                   hover:from-blue-400/40 hover:to-purple-400/40 text-white rounded-xl 
+                                   transition-all duration-300 font-inter font-medium text-base
+                                   shadow-[0_8px_24px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.08)] backdrop-blur-md
+                                   border border-white/25 hover:border-white/35
+                                   transform hover:scale-[1.02] active:scale-[0.98]
+                                   flex items-center justify-center gap-2"
+                      >
+                        <Sail className="w-5 h-5" />
+                        Start Journey
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -419,19 +334,11 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
         </div>
       )}
 
-      {/* Permissions Modal */}
-      <PermissionsModal
-        isOpen={showPermissionsModal}
-        onClose={() => setShowPermissionsModal(false)}
-        onPermissionsGranted={handlePermissionsGranted}
-      />
-
       {/* Control Panel - floating at bottom center */}
       <ControlPanel 
         isVisible={showControlPanel}
         onClose={() => setShowControlPanel(false)}
         onEndVoyage={handleEndVoyage}
-        sessionId={currentSessionId}
       />
 
       {/* Sailing Summary Panel - full screen modal */}
