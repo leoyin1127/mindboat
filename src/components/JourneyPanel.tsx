@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
 import { Compass, CheckCircle, Circle, Mail as Sail, Mountain, BookOpen, Palette } from 'lucide-react';
 import { designSystem, getButtonStyle, getPanelStyle, getIconContainerStyle, getInnerGlowStyle } from '../styles/designSystem';
-import { PermissionRequestModal } from './PermissionRequestModal';
-import { SailingSessionManager } from './SailingSessionManager';
+import { ControlPanel } from './ControlPanel';
 import { SailingSummaryPanel } from './SailingSummaryPanel';
-import { supabase } from '../lib/supabase';
 
 interface Task {
   id: string;
@@ -16,22 +14,6 @@ interface Task {
   details: string;
 }
 
-interface MediaPermissions {
-  camera: boolean;
-  microphone: boolean;
-  screen: boolean;
-}
-
-interface SailingSession {
-  id: string;
-  userId: string;
-  taskId: string;
-  taskTitle: string;
-  startTime: string;
-  status: 'sailing' | 'drifting' | 'completed';
-  elapsedTime: number;
-}
-
 interface SailingSummaryData {
   imageUrl: string;
   summaryText: string;
@@ -40,7 +22,6 @@ interface SailingSummaryData {
 interface JourneyPanelProps {
   isVisible: boolean;
   onClose?: () => void;
-  deviceId: string;
 }
 
 const mockTasks: Task[] = [
@@ -99,18 +80,11 @@ const getCategoryIcon = (category: Task['category']) => {
 
 export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   isVisible,
-  onClose,
-  deviceId
+  onClose
 }) => {
   const [selectedTask, setSelectedTask] = useState<Task>(mockTasks[0]);
   const [tasks, setTasks] = useState<Task[]>(mockTasks);
-  
-  // New state for sailing session flow
-  const [showPermissionModal, setShowPermissionModal] = useState(false);
-  const [permissions, setPermissions] = useState<MediaPermissions | null>(null);
-  const [currentSession, setCurrentSession] = useState<SailingSession | null>(null);
-  const [isSessionActive, setIsSessionActive] = useState(false);
-  
+  const [showControlPanel, setShowControlPanel] = useState(false);
   const [showSummaryPanel, setShowSummaryPanel] = useState(false);
   const [summaryData, setSummaryData] = useState<SailingSummaryData | null>(null);
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
@@ -121,110 +95,43 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
     ));
   };
 
-  const handleStartJourney = () => {
-    console.log('🚀 Starting journey with task:', selectedTask.title);
-    // Show permission request modal first
-    setShowPermissionModal(true);
-  };
-
-  const handlePermissionsGranted = async (grantedPermissions: MediaPermissions) => {
-    console.log('✅ Permissions granted:', grantedPermissions);
-    setPermissions(grantedPermissions);
-    setShowPermissionModal(false);
+  const handleStartJourney = async () => {
+    console.log('Starting journey with task:', selectedTask.title);
     
-    // Create sailing session
-    await createSailingSession();
-  };
-
-  const createSailingSession = async () => {
     try {
-      console.log('🏗️ Creating sailing session...');
-      
-      // Create new voyage/session in database
-      const { data: voyage, error } = await supabase
-        .from('voyages')
-        .insert({
-          user_id: deviceId,
-          destination_id: selectedTask.id,
-          start_time: new Date().toISOString(),
-          planned_duration: null, // No planned duration for now
-          status: 'active',
-          visual_state: 'sailing'
-        })
-        .select()
-        .single();
-
-      if (error) {
-        console.error('❌ Error creating sailing session:', error);
-        return;
-      }
-
-      console.log('✅ Sailing session created:', voyage);
-
-      // Create session object
-      const session: SailingSession = {
-        id: voyage.id,
-        userId: deviceId,
-        taskId: selectedTask.id,
-        taskTitle: selectedTask.title,
-        startTime: voyage.start_time,
-        status: 'sailing',
-        elapsedTime: 0
-      };
-
-      setCurrentSession(session);
-      setIsSessionActive(true);
-      
-      // Hide journey panel
-      onClose?.();
-      
-      // Trigger sailing animation immediately
-      await triggerSailingAnimation();
-      
-    } catch (error) {
-      console.error('❌ Error in createSailingSession:', error);
-    }
-  };
-
-  const triggerSailingAnimation = async () => {
-    try {
-      console.log('🎬 Triggering sailing animation...');
-      
+      // Send webhook via backend proxy
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/spline-proxy`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
-        body: JSON.stringify({
+        body: JSON.stringify({ 
           webhookUrl: 'https://hooks.spline.design/vS-vioZuERs',
           payload: { numbaer2: 0 }
         })
       });
 
       if (response.ok) {
-        console.log('✅ Sailing animation triggered successfully');
+        const responseData = await response.json();
+        console.log('Journey webhook sent successfully:', responseData);
       } else {
-        console.error('❌ Failed to trigger sailing animation');
+        console.error('Failed to send journey webhook:', response.status, response.statusText);
       }
     } catch (error) {
-      console.error('❌ Error triggering sailing animation:', error);
+      console.error('Error sending journey webhook:', error);
     }
-  };
-
-  const handleEndSession = () => {
-    console.log('🛑 Ending sailing session...');
-    setIsSessionActive(false);
-    setCurrentSession(null);
-    setPermissions(null);
     
-    // Start the sailing summary flow
-    handleEndVoyage();
+    // Hide the journey panel and show control panel
+    setShowControlPanel(true);
+    onClose?.();
   };
 
   const handleEndVoyage = async () => {
-    console.log('📋 Generating sailing summary...');
+    console.log('Ending voyage...');
     
+    // Hide control panel and show loading state
+    setShowControlPanel(false);
     setShowSummaryPanel(true);
     setIsLoadingSummary(true);
     
@@ -275,29 +182,17 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   const handleCloseSummary = () => {
     setShowSummaryPanel(false);
     setSummaryData(null);
+    // Optionally return to journey panel or close entirely
+    onClose?.();
   };
 
-  // Show journey panel only if it's visible and no session is active
-  const shouldShowJourneyPanel = isVisible && !isSessionActive && !showSummaryPanel;
+  // Show journey panel only if it's visible and no other panels are showing
+  const shouldShowJourneyPanel = isVisible && !showControlPanel && !showSummaryPanel;
 
-  if (!shouldShowJourneyPanel && !isSessionActive && !showSummaryPanel && !showPermissionModal) return null;
+  if (!shouldShowJourneyPanel && !showControlPanel && !showSummaryPanel) return null;
 
   return (
     <>
-      {/* Permission Request Modal */}
-      <PermissionRequestModal
-        isOpen={showPermissionModal}
-        onClose={() => setShowPermissionModal(false)}
-        onPermissionsGranted={handlePermissionsGranted}
-      />
-
-      {/* Sailing Session Manager - replaces ControlPanel */}
-      <SailingSessionManager
-        isActive={isSessionActive}
-        session={currentSession}
-        onEndSession={handleEndSession}
-      />
-
       {/* Journey Panel - only show if not in control or summary mode */}
       {shouldShowJourneyPanel && (
         <div className="fixed inset-0 z-40 flex">
@@ -438,6 +333,13 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
           </div>
         </div>
       )}
+
+      {/* Control Panel - floating at bottom center */}
+      <ControlPanel 
+        isVisible={showControlPanel}
+        onClose={() => setShowControlPanel(false)}
+        onEndVoyage={handleEndVoyage}
+      />
 
       {/* Sailing Summary Panel - full screen modal */}
       <SailingSummaryPanel
