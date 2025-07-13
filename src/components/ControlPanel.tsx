@@ -7,6 +7,13 @@ interface ControlPanelProps {
   onEndVoyage?: () => void;
   sessionId?: string | null;
   isSessionActive?: boolean;
+  // Media control props
+  isMicMuted?: boolean;
+  isVideoOn?: boolean;
+  isScreenSharing?: boolean;
+  onToggleMic?: () => void;
+  onToggleVideo?: () => void;
+  onToggleScreenShare?: () => void;
 }
 
 export const ControlPanel: React.FC<ControlPanelProps> = ({
@@ -14,27 +21,26 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   onClose,
   onEndVoyage,
   sessionId,
-  isSessionActive
+  isSessionActive,
+  isMicMuted = false,
+  isVideoOn = false,
+  isScreenSharing = false,
+  onToggleMic,
+  onToggleVideo,
+  onToggleScreenShare
 }) => {
-  const [micEnabled, setMicEnabled] = useState(false);
-  const [videoEnabled, setVideoEnabled] = useState(false);
-  const [screenShareEnabled, setScreenShareEnabled] = useState(false);
-
   if (!isVisible) return null;
 
-  const toggleMic = () => {
-    setMicEnabled(!micEnabled);
-    console.log('Microphone:', !micEnabled ? 'enabled' : 'disabled');
+  const handleToggleMic = () => {
+    onToggleMic?.();
   };
 
-  const toggleVideo = () => {
-    setVideoEnabled(!videoEnabled);
-    console.log('Video:', !videoEnabled ? 'enabled' : 'disabled');
+  const handleToggleVideo = () => {
+    onToggleVideo?.();
   };
 
-  const toggleScreenShare = () => {
-    setScreenShareEnabled(!screenShareEnabled);
-    console.log('Screen share:', !screenShareEnabled ? 'enabled' : 'disabled');
+  const handleToggleScreenShare = () => {
+    onToggleScreenShare?.();
   };
 
   const handleEndVoyage = () => {
@@ -60,20 +66,20 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         <div className="relative z-10 flex items-center gap-4">
           {/* Microphone Control */}
           <button
-            onClick={toggleMic}
+            onClick={handleToggleMic}
             className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 
-                        backdrop-blur-md border shadow-lg relative overflow-visible group ${micEnabled
+                        backdrop-blur-md border shadow-lg relative overflow-visible group ${!isMicMuted
                 ? 'bg-green-400/20 border-green-300/30 shadow-green-400/20'
                 : 'bg-red-400/20 border-red-300/30 shadow-red-400/20'
               }`}
           >
             {/* Button inner glow */}
-            <div className={`absolute inset-0 rounded-2xl transition-opacity duration-300 ${micEnabled
+            <div className={`absolute inset-0 rounded-2xl transition-opacity duration-300 ${!isMicMuted
               ? 'bg-gradient-to-br from-green-300/20 to-green-500/20'
               : 'bg-gradient-to-br from-red-300/20 to-red-500/20'
               }`}></div>
 
-            {micEnabled ? (
+            {!isMicMuted ? (
               <Mic className="w-5 h-5 text-white relative z-10" />
             ) : (
               <MicOff className="w-5 h-5 text-white relative z-10" />
@@ -87,26 +93,26 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                            opacity-0 invisible group-hover:opacity-100 group-hover:visible 
                            transition-all duration-300 z-20
                            shadow-[0_4px_16px_rgba(0,0,0,0.1),0_1px_4px_rgba(0,0,0,0.06)]">
-              {micEnabled ? 'Turn off microphone' : 'Turn on microphone'}
+              {!isMicMuted ? 'Turn off microphone' : 'Turn on microphone'}
             </span>
           </button>
 
           {/* Video Control */}
           <button
-            onClick={toggleVideo}
+            onClick={handleToggleVideo}
             className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 
-                        backdrop-blur-md border shadow-lg relative overflow-visible group ${videoEnabled
+                        backdrop-blur-md border shadow-lg relative overflow-visible group ${isVideoOn
                 ? 'bg-green-400/20 border-green-300/30 shadow-green-400/20'
                 : 'bg-red-400/20 border-red-300/30 shadow-red-400/20'
               }`}
           >
             {/* Button inner glow */}
-            <div className={`absolute inset-0 rounded-2xl transition-opacity duration-300 ${videoEnabled
+            <div className={`absolute inset-0 rounded-2xl transition-opacity duration-300 ${isVideoOn
               ? 'bg-gradient-to-br from-green-300/20 to-green-500/20'
               : 'bg-gradient-to-br from-red-300/20 to-red-500/20'
               }`}></div>
 
-            {videoEnabled ? (
+            {isVideoOn ? (
               <Video className="w-5 h-5 text-white relative z-10" />
             ) : (
               <VideoOff className="w-5 h-5 text-white relative z-10" />
@@ -120,26 +126,26 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                            opacity-0 invisible group-hover:opacity-100 group-hover:visible 
                            transition-all duration-300 z-20
                            shadow-[0_4px_16px_rgba(0,0,0,0.1),0_1px_4px_rgba(0,0,0,0.06)]">
-              {videoEnabled ? 'Turn off camera' : 'Turn on camera'}
+              {isVideoOn ? 'Turn off camera' : 'Turn on camera'}
             </span>
           </button>
 
           {/* Screen Share Control */}
           <button
-            onClick={toggleScreenShare}
+            onClick={handleToggleScreenShare}
             className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 
-                        backdrop-blur-md border shadow-lg relative overflow-visible group ${screenShareEnabled
+                        backdrop-blur-md border shadow-lg relative overflow-visible group ${isScreenSharing
                 ? 'bg-green-400/20 border-green-300/30 shadow-green-400/20'
                 : 'bg-red-400/20 border-red-300/30 shadow-red-400/20'
               }`}
           >
             {/* Button inner glow */}
-            <div className={`absolute inset-0 rounded-2xl transition-opacity duration-300 ${screenShareEnabled
+            <div className={`absolute inset-0 rounded-2xl transition-opacity duration-300 ${isScreenSharing
               ? 'bg-gradient-to-br from-green-300/20 to-green-500/20'
               : 'bg-gradient-to-br from-red-300/20 to-red-500/20'
               }`}></div>
 
-            {screenShareEnabled ? (
+            {isScreenSharing ? (
               <Monitor className="w-5 h-5 text-white relative z-10" />
             ) : (
               <MonitorOff className="w-5 h-5 text-white relative z-10" />
@@ -153,7 +159,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                            opacity-0 invisible group-hover:opacity-100 group-hover:visible 
                            transition-all duration-300 z-20
                            shadow-[0_4px_16px_rgba(0,0,0,0.1),0_1px_4px_rgba(0,0,0,0.06)]">
-              {screenShareEnabled ? 'Stop screen sharing' : 'Start screen sharing'}
+              {isScreenSharing ? 'Stop screen sharing' : 'Start screen sharing'}
             </span>
           </button>
 

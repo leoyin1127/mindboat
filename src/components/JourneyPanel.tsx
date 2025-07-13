@@ -3,6 +3,8 @@ import { Compass, CheckCircle, Circle, Mail as Sail, Mountain, BookOpen, Palette
 import { ControlPanel } from './ControlPanel';
 import { SailingSummaryPanel } from './SailingSummaryPanel';
 import { PermissionPanel } from './PermissionPanel';
+import { VideoPreview } from './VideoPreview';
+import { SeagullPanel } from './SeagullPanel';
 import { auth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 
@@ -81,6 +83,8 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   const [summaryData, setSummaryData] = useState<SailingSummaryData | undefined>(undefined);
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
   const [showPermissionPanel, setShowPermissionPanel] = useState(false);
+  const [showSeagullPanel, setShowSeagullPanel] = useState(false);
+  const [seagullMessage, setSeagullMessage] = useState<string>('');
 
   // Sailing session state
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -92,6 +96,24 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
 
   // Realtime channel reference
   const realtimeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+
+  // Media state management
+  const [isVideoOn, setIsVideoOn] = useState(false);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [isMicMuted, setIsMicMuted] = useState(false);
+  
+  // Media stream references
+  const [videoStream, setVideoStream] = useState<MediaStream | null>(null);
+  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
+  const [micStream, setMicStream] = useState<MediaStream | null>(null);
+  
+  // Refs for video elements
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const screenRef = useRef<HTMLVideoElement | null>(null);
+
+  // Heartbeat system for distraction detection
+  const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [isHeartbeatActive, setIsHeartbeatActive] = useState(false);
 
   // Drag and drop state
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
@@ -200,10 +222,12 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
     }
   };
 
-  // Cleanup Realtime channel on component unmount
+  // Cleanup Realtime channel, media streams, and heartbeat on component unmount
   useEffect(() => {
     return () => {
       cleanupRealtimeChannel();
+      cleanupMediaStreams();
+      stopHeartbeat();
     };
   }, []);
 
@@ -315,6 +339,287 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
     }
   };
 
+  // Media handling functions
+  const toggleVideo = async () => {
+    try {
+      if (isVideoOn && videoStream) {
+        // Turn off video
+        videoStream.getTracks().forEach(track => track.stop());
+        setVideoStream(null);
+        setIsVideoOn(false);
+        if (videoRef.current) {
+          videoRef.current.srcObject = null;
+        }
+        console.log('Video turned off');
+      } else {
+        // Turn on video
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            width: { ideal: 1280 }, 
+            height: { ideal: 720 } 
+          } 
+        });
+        setVideoStream(stream);
+        setIsVideoOn(true);
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+        console.log('Video turned on');
+      }
+    } catch (error) {
+      console.error('Error toggling video:', error);
+      setSessionError('Failed to access camera. Please check permissions.');
+    }
+  };
+
+  const toggleScreenShare = async () => {
+    try {
+      if (isScreenSharing && screenStream) {
+        // Stop screen sharing
+        screenStream.getTracks().forEach(track => track.stop());
+        setScreenStream(null);
+        setIsScreenSharing(false);
+        if (screenRef.current) {
+          screenRef.current.srcObject = null;
+        }
+        console.log('Screen sharing stopped');
+      } else {
+        // Start screen sharing
+        const stream = await navigator.mediaDevices.getDisplayMedia({ 
+          video: true, 
+          audio: true 
+        });
+        setScreenStream(stream);
+        setIsScreenSharing(true);
+        if (screenRef.current) {
+          screenRef.current.srcObject = stream;
+        }
+        
+        // Handle when user stops sharing via browser UI
+        stream.getVideoTracks()[0].addEventListener('ended', () => {
+          setScreenStream(null);
+          setIsScreenSharing(false);
+          if (screenRef.current) {
+            screenRef.current.srcObject = null;
+          }
+        });
+        
+        console.log('Screen sharing started');
+      }
+    } catch (error) {
+      console.error('Error toggling screen share:', error);
+      setSessionError('Failed to start screen sharing. Please check permissions.');
+    }
+  };
+
+  const toggleMic = async () => {
+    try {
+      if (!micStream) {
+        // Request microphone access if not already available
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        setMicStream(stream);
+        setIsMicMuted(false);
+        console.log('Microphone access granted');
+      } else {
+        // Toggle mute state
+        const audioTrack = micStream.getAudioTracks()[0];
+        if (audioTrack) {
+          audioTrack.enabled = isMicMuted;
+          setIsMicMuted(!isMicMuted);
+          console.log('Microphone', isMicMuted ? 'unmuted' : 'muted');
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling microphone:', error);
+      setSessionError('Failed to access microphone. Please check permissions.');
+    }
+  };
+
+  // Cleanup all media streams
+  const cleanupMediaStreams = () => {
+    if (videoStream) {
+      videoStream.getTracks().forEach(track => track.stop());
+      setVideoStream(null);
+      setIsVideoOn(false);
+    }
+    if (screenStream) {
+      screenStream.getTracks().forEach(track => track.stop());
+      setScreenStream(null);
+      setIsScreenSharing(false);
+    }
+    if (micStream) {
+      micStream.getTracks().forEach(track => track.stop());
+      setMicStream(null);
+      setIsMicMuted(false);
+    }
+    console.log('All media streams cleaned up');
+  };
+
+  // Image capture utilities for heartbeat system
+  const captureCameraFrame = async (): Promise<Blob | null> => {
+    if (!videoStream || !isVideoOn) {
+      console.warn('No video stream available for camera capture');
+      return null;
+    }
+
+    try {
+      const canvas = document.createElement('canvas');
+      const video = document.createElement('video');
+      
+      // Set up video element
+      video.srcObject = videoStream;
+      video.muted = true;
+      await video.play();
+
+      // Set canvas dimensions
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        throw new Error('Could not get canvas context');
+      }
+
+      // Draw video frame to canvas
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // Convert to blob
+      return new Promise((resolve) => {
+        canvas.toBlob((blob) => {
+          resolve(blob);
+        }, 'image/jpeg', 0.8);
+      });
+    } catch (error) {
+      console.error('Error capturing camera frame:', error);
+      return null;
+    }
+  };
+
+  const captureScreenFrame = async (): Promise<Blob | null> => {
+    if (!screenStream || !isScreenSharing) {
+      console.warn('No screen stream available for screen capture');
+      return null;
+    }
+
+    try {
+      const canvas = document.createElement('canvas');
+      const video = document.createElement('video');
+      
+      // Set up video element
+      video.srcObject = screenStream;
+      video.muted = true;
+      await video.play();
+
+      // Set canvas dimensions
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        throw new Error('Could not get canvas context');
+      }
+
+      // Draw video frame to canvas
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // Convert to blob
+      return new Promise((resolve) => {
+        canvas.toBlob((blob) => {
+          resolve(blob);
+        }, 'image/jpeg', 0.8);
+      });
+    } catch (error) {
+      console.error('Error capturing screen frame:', error);
+      return null;
+    }
+  };
+
+  // Heartbeat function - sends periodic focus check to backend
+  const sendHeartbeat = async () => {
+    if (!currentSessionId || !isSessionActive) {
+      console.log('No active session for heartbeat');
+      return;
+    }
+
+    console.log('📊 Sending heartbeat for session:', currentSessionId);
+
+    try {
+      // Capture images from active streams
+      const cameraBlob = await captureCameraFrame();
+      const screenBlob = await captureScreenFrame();
+
+      // Skip heartbeat if no images captured
+      if (!cameraBlob && !screenBlob) {
+        console.warn('No images captured for heartbeat, skipping this cycle');
+        return;
+      }
+
+      // Prepare FormData with session info and images
+      const formData = new FormData();
+      formData.append('sessionId', currentSessionId);
+      
+      if (cameraBlob) {
+        formData.append('cameraImage', cameraBlob, `camera_${Date.now()}.jpg`);
+      }
+      
+      if (screenBlob) {
+        formData.append('screenImage', screenBlob, `screen_${Date.now()}.jpg`);
+      }
+
+      // Send to session-heartbeat Edge Function
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/session-heartbeat`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: formData
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ Heartbeat sent successfully:', result);
+        
+        // Log drift status for debugging
+        if (result.is_drifting) {
+          console.warn('🚨 Drift detected:', result.reason);
+        } else {
+          console.log('✨ User focused:', result.actual_task);
+        }
+      } else {
+        console.error('❌ Heartbeat failed:', response.status, response.statusText);
+      }
+    } catch (error) {
+      console.error('❌ Error sending heartbeat:', error);
+    }
+  };
+
+  // Start heartbeat monitoring
+  const startHeartbeat = () => {
+    if (heartbeatIntervalRef.current) {
+      console.log('Heartbeat already active');
+      return;
+    }
+
+    console.log('🔄 Starting heartbeat monitoring (60s intervals)');
+    setIsHeartbeatActive(true);
+    
+    // Send first heartbeat immediately
+    setTimeout(sendHeartbeat, 5000); // Wait 5 seconds for streams to stabilize
+    
+    // Then send every 60 seconds
+    heartbeatIntervalRef.current = setInterval(sendHeartbeat, 60000);
+  };
+
+  // Stop heartbeat monitoring
+  const stopHeartbeat = () => {
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+      setIsHeartbeatActive(false);
+      console.log('⏹️ Heartbeat monitoring stopped');
+    }
+  };
+
   // Setup Realtime channel for session
   const setupRealtimeChannel = (sessionId: string) => {
     if (realtimeChannelRef.current) {
@@ -332,6 +637,18 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
         console.log('Session ended remotely:', payload);
         setIsSessionActive(false);
         setCurrentSessionId(null);
+      })
+      .on('broadcast', { event: 'deep_drift_detected' }, (payload) => {
+        console.log('🚨 Deep drift detected, triggering AI intervention:', payload);
+        
+        // Trigger SeagullPanel with intervention message
+        const interventionMessage = payload.payload?.message || 
+          `Captain, I've noticed you've been drifting for ${payload.payload?.consecutive_drifts || 5} minutes. Let's get back on course together.`;
+        
+        setSeagullMessage(interventionMessage);
+        setShowSeagullPanel(true);
+        
+        console.log('🦅 Seagull intervention activated');
       })
       .subscribe((status) => {
         console.log('Realtime channel status:', status);
@@ -402,15 +719,29 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       // Step 2: Setup Realtime channel
       setupRealtimeChannel(sessionId);
 
-      // Step 3: Trigger Spline animation
+      // Step 3: Initialize microphone stream for session
+      try {
+        const microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        setMicStream(microphoneStream);
+        setIsMicMuted(false);
+        console.log('Microphone initialized for session');
+      } catch (micError) {
+        console.warn('Could not initialize microphone for session:', micError);
+        // Continue with session even if microphone fails
+      }
+
+      // Step 4: Trigger Spline animation
       await triggerSplineSessionAnimation('start');
 
-      // Step 4: Update session state
+      // Step 5: Update session state
       setCurrentSessionId(sessionId);
       setIsSessionActive(true);
       setSessionStartTime(new Date());
 
-      // Step 5: Show control panel and hide journey panel
+      // Step 6: Start heartbeat monitoring for distraction detection
+      startHeartbeat();
+
+      // Step 7: Show control panel and hide journey panel
       setShowControlPanel(true);
       onClose?.();
 
@@ -496,8 +827,10 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       // Step 2: Trigger Spline animation
       await triggerSplineSessionAnimation('end');
 
-      // Step 3: Clean up Realtime channel
+      // Step 3: Clean up Realtime channel, media streams, and heartbeat
       cleanupRealtimeChannel();
+      cleanupMediaStreams();
+      stopHeartbeat();
 
       // Step 4: Generate AI summary
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sailing-summary`, {
@@ -914,6 +1247,12 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
         onEndVoyage={handleEndVoyage}
         sessionId={currentSessionId}
         isSessionActive={isSessionActive}
+        isMicMuted={isMicMuted}
+        isVideoOn={isVideoOn}
+        isScreenSharing={isScreenSharing}
+        onToggleMic={toggleMic}
+        onToggleVideo={toggleVideo}
+        onToggleScreenShare={toggleScreenShare}
       />
 
       {/* Sailing Summary Panel - full screen modal */}
@@ -937,6 +1276,34 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
           }
         }}
         onPermissionsGranted={handlePermissionsGranted}
+      />
+
+      {/* Video Preview - Camera */}
+      <VideoPreview
+        stream={videoStream}
+        type="camera"
+        isVisible={isVideoOn}
+        onClose={toggleVideo}
+        className="top-4 right-4"
+      />
+
+      {/* Video Preview - Screen Share */}
+      <VideoPreview
+        stream={screenStream}
+        type="screen"
+        isVisible={isScreenSharing}
+        onClose={toggleScreenShare}
+        className="top-4 left-4"
+      />
+
+      {/* Seagull Panel - AI Intervention for Deep Drift */}
+      <SeagullPanel
+        isVisible={showSeagullPanel}
+        onClose={() => {
+          setShowSeagullPanel(false);
+          setSeagullMessage('');
+        }}
+        message={seagullMessage}
       />
     </>
   );
