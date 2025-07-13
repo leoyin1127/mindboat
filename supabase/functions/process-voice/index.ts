@@ -26,8 +26,8 @@ const corsHeaders = {
 }
 
 // Dify API configuration
-const DIFY_API_URL = 'https://164579e467f4.ngrok-free.app/v1/workflows/run'
-const DIFY_API_KEY = 'app-SsuWoEfRY7MbQLtkRj9dn09u'
+const DIFY_API_URL = Deno.env.get('DIFY_API_URL') ?? ''
+const DIFY_API_KEY = Deno.env.get('DIFY_API_KEY') ?? ''
 
 interface ProcessVoiceRequest {
     transcript: string
