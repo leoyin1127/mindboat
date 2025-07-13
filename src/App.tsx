@@ -3,25 +3,31 @@ import { supabase } from './lib/supabase';
 import { SplineScene } from './components/SplineScene';
 import { SplineEventHandler } from './components/SplineEventHandler';
 
+// Device ID management
+const generateDeviceId = () => {
+  return 'device_' + Math.random().toString(36).substr(2, 16) + '_' + Date.now().toString(36);
+};
+
+const getOrCreateDeviceId = () => {
+  let deviceId = localStorage.getItem('mindboat_device_id');
+  if (!deviceId) {
+    deviceId = generateDeviceId();
+    localStorage.setItem('mindboat_device_id', deviceId);
+    console.log('Created new device ID:', deviceId);
+  } else {
+    console.log('Using existing device ID:', deviceId);
+  }
+  return deviceId;
+};
+
 function App() {
   const [isModalOpen, setIsModalOpen] = React.useState(false);
-  const [isAuthLoading, setIsAuthLoading] = React.useState(true);
+  const [deviceId, setDeviceId] = React.useState<string>('');
 
-  // Initialize anonymous authentication on app start
+  // Initialize device-based authentication on app start
   React.useEffect(() => {
-    const initializeAuth = async () => {
-      try {
-        // Only check for existing session, don't create anonymous users
-        const { data: { session } } = await supabase.auth.getSession();
-        console.log('Session check completed:', session ? 'User authenticated' : 'No active session');
-      } catch (error) {
-        console.error('Error checking authentication:', error);
-      } finally {
-        setIsAuthLoading(false);
-      }
-    };
-
-    initializeAuth();
+    const id = getOrCreateDeviceId();
+    setDeviceId(id);
   }, []);
 
   const handleSplineEvent = (event: any) => {
@@ -43,11 +49,11 @@ function App() {
     };
   }, []);
 
-  // Show loading while authentication is being initialized
-  if (isAuthLoading) {
+  // Don't render until device ID is ready
+  if (!deviceId) {
     return (
       <div className="h-screen bg-black flex items-center justify-center">
-        <div className="text-white">Loading...</div>
+        <div className="text-white">Initializing...</div>
       </div>
     );
   }
@@ -61,6 +67,7 @@ function App() {
       <SplineEventHandler 
         onEventReceived={handleSplineEvent}
         onModalStateChange={setIsModalOpen}
+        deviceId={deviceId}
       />
 
       {/* Subtle gradient overlay for depth */}

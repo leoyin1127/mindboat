@@ -23,6 +23,7 @@ const corsHeaders = {
 
 interface GoalsWebhookPayload {
   goal_text?: string;
+  device_id?: string;
   [key: string]: any;
 }
 
@@ -98,19 +99,12 @@ Deno.serve(async (req: Request) => {
         )
       }
       
-      // Get user from the JWT
-      const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
-      )
-      const { data: { user } } = await supabaseClient.auth.getUser()
-
-      if (!user) {
+      // Validate device_id is provided
+      if (!payload.device_id) {
         return new Response(
-          JSON.stringify({ error: 'Authentication required' }),
+          JSON.stringify({ error: 'Device ID is required' }),
           {
-            status: 401,
+            status: 400,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           }
         )
@@ -120,7 +114,7 @@ Deno.serve(async (req: Request) => {
       const { data: goalData, error: goalError } = await serviceRoleClient
         .from('goals')
         .insert({
-          user_id: user.id,
+          device_id: payload.device_id,
           goal_text: payload.goal_text.trim()
         })
       

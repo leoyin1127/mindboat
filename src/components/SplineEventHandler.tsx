@@ -31,11 +31,13 @@ interface SplineEvent {
 interface SplineEventHandlerProps {
   onEventReceived?: (event: SplineEvent) => void
   onModalStateChange?: (isOpen: boolean) => void
+  deviceId: string
 }
 
 export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({ 
   onEventReceived,
-  onModalStateChange 
+  onModalStateChange,
+  deviceId
 }) => {
   const [showModal, setShowModal] = useState(false)
   const [currentEvent, setCurrentEvent] = useState<SplineEvent | null>(null)
@@ -191,19 +193,19 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
   const handleLifeGoalSubmit = async (goal: string) => {
     console.log('Life goal submitted:', goal)
     
-    // Check if user is authenticated before making the call
-    const { data: { session } } = await supabase.auth.getSession()
-    
-    if (!session?.user) {
-      console.error('User not authenticated - cannot save life goal')
-      // You could show an authentication prompt here
+    // Check if device ID is available
+    if (!deviceId) {
+      console.error('Device ID not available - cannot save life goal')
       return false
     }
     
     try {
-      // Call the goals-webhook Edge Function with the goal text
+      // Call the goals-webhook Edge Function with the goal text and device ID
       const { data, error } = await supabase.functions.invoke('goals-webhook', {
-        body: { goal_text: goal }
+        body: { 
+          goal_text: goal,
+          device_id: deviceId
+        }
       })
       
       if (error) {
