@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react'
-import { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { X, Sparkles, Compass, Target, Heart, MessageCircle } from 'lucide-react'
 import { LifeGoalsModal } from './LifeGoalsModal'
@@ -32,15 +31,11 @@ interface SplineEvent {
 interface SplineEventHandlerProps {
   onEventReceived?: (event: SplineEvent) => void
   onModalStateChange?: (isOpen: boolean) => void
-  session: Session | null
-  setShowAuthModal: (show: boolean) => void
 }
 
 export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({ 
   onEventReceived,
-  onModalStateChange,
-  session,
-  setShowAuthModal
+  onModalStateChange 
 }) => {
   const [showModal, setShowModal] = useState(false)
   const [currentEvent, setCurrentEvent] = useState<SplineEvent | null>(null)
@@ -164,16 +159,10 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
             setShowJourneyPanel(false)
             setShowSeagullPanel(false)
           } else if (shouldShowGoals) {
-            // Authentication check for Life Goals feature
-            if (session) {
-              setShowLifeGoalsModal(true)
-              setShowWelcomePanel(false)
-              setShowJourneyPanel(false)
-              setShowSeagullPanel(false)
-            } else {
-              // If not authenticated, show login modal instead
-              setShowAuthModal(true)
-            }
+            setShowLifeGoalsModal(true)
+            setShowWelcomePanel(false)
+            setShowJourneyPanel(false)
+            setShowSeagullPanel(false)
           } else if (shouldShowJourney) {
             setShowJourneyPanel(true)
             setShowWelcomePanel(false)
@@ -192,7 +181,7 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [onEventReceived, session, setShowAuthModal])
+  }, [onEventReceived])
 
   const closeModal = () => {
     setShowModal(false)
@@ -297,7 +286,7 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
         message={currentEvent?.payload?.seagullMessage}
       />
 
-      {/* Life Goals Modal - Only show if user is authenticated */}
+      {/* Life Goals Modal */}
       <LifeGoalsModal
         isOpen={showLifeGoalsModal}
         onClose={() => setShowLifeGoalsModal(false)}
