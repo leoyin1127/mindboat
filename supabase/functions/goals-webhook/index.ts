@@ -1,13 +1,16 @@
 /*
 # Goals Webhook Edge Function
 
-This Edge Function handles Spline API calls for the "Life Goals" feature.
-When called, it triggers the life goals modal on the frontend.
+This Edge Function handles life goal submissions and Spline API calls for the "Life Goals" feature.
+When called with a goal_text, it stores the goal in the database and triggers the Spline webhook.
+When called without a goal_text, it triggers the life goals modal on the frontend.
 
 ## Usage
 - URL: https://[your-project].supabase.co/functions/v1/goals-webhook
 - Method: POST
-- Triggers: Life goals modal with goal input form
+- Headers: Authorization: Bearer <JWT>
+- Body (for goal submission): { "goal_text": "User's life goal" }
+- Response: JSON with success status and message
 */
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
@@ -19,6 +22,7 @@ const corsHeaders = {
 }
 
 interface GoalsWebhookPayload {
+  goal?: string;
   [key: string]: any;
 }
 
@@ -43,7 +47,7 @@ Deno.serve(async (req: Request) => {
       )
     }
 
-    // Parse the request body (optional for this endpoint)
+    // Parse the request body
     let payload: GoalsWebhookPayload = {}
     try {
       const body = await req.text()
@@ -51,20 +55,31 @@ Deno.serve(async (req: Request) => {
         payload = JSON.parse(body)
       }
     } catch (error) {
-      // If JSON parsing fails, continue with empty payload
-      console.log('No JSON payload or invalid JSON, continuing with empty payload')
+      return new Response(
+        JSON.stringify({ 
+          error: 'Invalid JSON payload',
+          message: error.message
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      )
     }
 
     console.log('=== GOALS WEBHOOK CALLED ===')
     console.log('Payload received:', JSON.stringify(payload, null, 2))
     console.log('Timestamp:', new Date().toISOString())
 
-    // Initialize Supabase client
-    const supabase = createClient(
+    // Initialize Supabase client with service role for database operations
+    const serviceRoleClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
-
+    
+    // This function only handles UI event broadcasting, not data saving
+    // Life goals are saved via auth.setGuidingStar() in the frontend
+    
     // Create the goals event data
     const eventData = {
       type: 'spline_goals_trigger',
@@ -86,7 +101,7 @@ Deno.serve(async (req: Request) => {
     console.log('Event data:', JSON.stringify(eventData, null, 2))
 
     // Broadcast to realtime channel
-    const channel = supabase.channel('spline-events')
+    const channel = serviceRoleClient.channel('spline-events')
     
     const broadcastResult = await channel.send({
       type: 'broadcast',
