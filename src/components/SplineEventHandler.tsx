@@ -191,6 +191,15 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
   const handleLifeGoalSubmit = async (goal: string) => {
     console.log('Life goal submitted:', goal)
     
+    // Check if user is authenticated before making the call
+    const { data: { session } } = await supabase.auth.getSession()
+    
+    if (!session?.user) {
+      console.error('User not authenticated - cannot save life goal')
+      // You could show an authentication prompt here
+      return false
+    }
+    
     try {
       // Call the goals-webhook Edge Function with the goal text
       const { data, error } = await supabase.functions.invoke('goals-webhook', {
