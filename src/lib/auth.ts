@@ -320,7 +320,28 @@ class AnonymousAuth {
             throw error
         }
 
-        return sessionSummary
+        // Handle potential type conversion issues (bigint to integer)
+        if (sessionSummary && typeof sessionSummary === 'object') {
+            const processedSummary = { ...sessionSummary }
+
+            // Convert any potential bigint values to numbers
+            Object.keys(processedSummary).forEach(key => {
+                const value = processedSummary[key]
+                if (typeof value === 'bigint') {
+                    processedSummary[key] = Number(value)
+                } else if (typeof value === 'string' && /^\d+$/.test(value)) {
+                    // Convert string numbers to actual numbers for consistency
+                    const numValue = parseInt(value, 10)
+                    if (!isNaN(numValue)) {
+                        processedSummary[key] = numValue
+                    }
+                }
+            })
+
+            return processedSummary
+        }
+
+        return sessionSummary || {}
     }
 
     /**

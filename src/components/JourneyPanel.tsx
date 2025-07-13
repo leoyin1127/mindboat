@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Compass, CheckCircle, Circle, Mail as Sail, Mountain, BookOpen, Palette, GripVertical, X } from 'lucide-react';
 import { ControlPanel } from './ControlPanel';
 import { SailingSummaryPanel } from './SailingSummaryPanel';
+import { PermissionPanel } from './PermissionPanel';
 import { auth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 
@@ -79,6 +80,18 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   const [showSummaryPanel, setShowSummaryPanel] = useState(false);
   const [summaryData, setSummaryData] = useState<SailingSummaryData | undefined>(undefined);
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
+  const [showPermissionPanel, setShowPermissionPanel] = useState(false);
+
+  // Sailing session state
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [isSessionActive, setIsSessionActive] = useState(false);
+  const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  const [hasPermissions, setHasPermissions] = useState(false);
+  const [isStartingSession, setIsStartingSession] = useState(false);
+
+  // Realtime channel reference
+  const realtimeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   // Drag and drop state
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
@@ -143,8 +156,56 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   useEffect(() => {
     if (isVisible) {
       fetchTasks();
+      // Check permissions when panel opens
+      checkInitialPermissions();
     }
   }, [isVisible]);
+
+  // Check initial permissions when panel opens
+  const checkInitialPermissions = async () => {
+    try {
+      let hasMic = false;
+      let hasCamera = false;
+      let hasScreen = false;
+
+      // Check microphone permission
+      try {
+        const micPermission = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+        hasMic = micPermission.state === 'granted';
+      } catch (error) {
+        console.warn('Could not check microphone permission:', error);
+        hasMic = false;
+      }
+
+      // Check camera permission
+      try {
+        const cameraPermission = await navigator.permissions.query({ name: 'camera' as PermissionName });
+        hasCamera = cameraPermission.state === 'granted';
+      } catch (error) {
+        console.warn('Could not check camera permission:', error);
+        hasCamera = false;
+      }
+
+      // Screen sharing can't be queried, assume false initially
+      hasScreen = false;
+
+      // Only set hasPermissions to true if we have microphone (required)
+      // The permission panel will handle checking all three
+      setHasPermissions(hasMic);
+
+      console.log('Initial permissions check:', { hasMic, hasCamera, hasScreen });
+    } catch (error) {
+      console.warn('Could not check initial permissions:', error);
+      setHasPermissions(false);
+    }
+  };
+
+  // Cleanup Realtime channel on component unmount
+  useEffect(() => {
+    return () => {
+      cleanupRealtimeChannel();
+    };
+  }, []);
 
   const toggleTaskCompletion = async (taskId: string) => {
     try {
@@ -245,16 +306,55 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
     setDragOverIndex(null);
   };
 
-  const handleStartJourney = async () => {
-    if (!selectedTask) {
-      console.error('No task selected');
-      return;
+  // Handle permission panel completion
+  const handlePermissionsGranted = (hasEssentialPermissions: boolean) => {
+    setHasPermissions(hasEssentialPermissions);
+    if (hasEssentialPermissions) {
+      setSessionError(null);
+      // Don't auto-start here - let the permission panel handle it via onClose
+    }
+  };
+
+  // Setup Realtime channel for session
+  const setupRealtimeChannel = (sessionId: string) => {
+    if (realtimeChannelRef.current) {
+      supabase.removeChannel(realtimeChannelRef.current);
     }
 
-    console.log('Starting journey with task:', selectedTask.title);
+    const channel = supabase.channel(`session:${sessionId}`);
 
+    channel
+      .on('broadcast', { event: 'session_event' }, (payload) => {
+        console.log('Session event received:', payload);
+        // Handle session events like drift detection, AI interventions, etc.
+      })
+      .on('broadcast', { event: 'session_ended' }, (payload) => {
+        console.log('Session ended remotely:', payload);
+        setIsSessionActive(false);
+        setCurrentSessionId(null);
+      })
+      .subscribe((status) => {
+        console.log('Realtime channel status:', status);
+      });
+
+    realtimeChannelRef.current = channel;
+  };
+
+  // Clean up Realtime channel
+  const cleanupRealtimeChannel = () => {
+    if (realtimeChannelRef.current) {
+      supabase.removeChannel(realtimeChannelRef.current);
+      realtimeChannelRef.current = null;
+    }
+  };
+
+  // Trigger Spline animation for session events
+  const triggerSplineSessionAnimation = async (event: 'start' | 'end') => {
     try {
-      // Send webhook via backend proxy
+      const webhookUrl = event === 'start' ?
+        'https://hooks.spline.design/vS-vioZuERs' :
+        'https://hooks.spline.design/vS-vioZuERs'; // Use same webhook for now
+
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/spline-proxy`, {
         method: 'POST',
         headers: {
@@ -262,28 +362,97 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify({
-          webhookUrl: 'https://hooks.spline.design/vS-vioZuERs',
-          payload: { numbaer2: 0 }
+          webhookUrl,
+          payload: { numbaer2: event === 'start' ? 0 : 1 }
         })
       });
 
       if (response.ok) {
-        const responseData = await response.json();
-        console.log('Journey webhook sent successfully:', responseData);
+        console.log(`${event} session animation triggered successfully`);
       } else {
-        console.error('Failed to send journey webhook:', response.status, response.statusText);
+        console.error(`Failed to trigger ${event} session animation:`, response.status);
       }
     } catch (error) {
-      console.error('Error sending journey webhook:', error);
+      console.error(`Error triggering ${event} session animation:`, error);
     }
-
-    // Hide the journey panel and show control panel
-    setShowControlPanel(true);
-    onClose?.();
   };
 
+  // Core session starting logic - separated from permission checks
+  const startSailingSession = async () => {
+    if (!selectedTask) {
+      console.error('No task selected');
+      return;
+    }
+
+    // Guard: Prevent multiple calls if already starting or active
+    if (isStartingSession || isSessionActive || currentSessionId) {
+      console.log('Session already starting or active, ignoring call');
+      return;
+    }
+
+    console.log('Starting sailing session with task:', selectedTask.title);
+    setIsStartingSession(true);
+    setSessionError(null);
+
+    try {
+      // Step 1: Start sailing session in database
+      const sessionId = await auth.startSession(selectedTask.id);
+      console.log('Sailing session started with ID:', sessionId);
+
+      // Step 2: Setup Realtime channel
+      setupRealtimeChannel(sessionId);
+
+      // Step 3: Trigger Spline animation
+      await triggerSplineSessionAnimation('start');
+
+      // Step 4: Update session state
+      setCurrentSessionId(sessionId);
+      setIsSessionActive(true);
+      setSessionStartTime(new Date());
+
+      // Step 5: Show control panel and hide journey panel
+      setShowControlPanel(true);
+      onClose?.();
+
+    } catch (error) {
+      console.error('Error starting sailing session:', error);
+      setSessionError(error instanceof Error ? error.message : 'Failed to start sailing session');
+      setIsSessionActive(false);
+      setCurrentSessionId(null);
+    } finally {
+      setIsStartingSession(false);
+    }
+  };
+
+  // Handle journey start - always check permissions first
+  const handleStartJourney = async () => {
+    if (!selectedTask) {
+      console.error('No task selected');
+      return;
+    }
+
+    // Always show permission panel to allow user to grant all permissions
+    // The panel will auto-start the session when essential permissions are granted
+    setShowPermissionPanel(true);
+  };
+
+
+
   const handleEndVoyage = async () => {
-    console.log('Ending voyage...');
+    if (!currentSessionId) {
+      console.error('No active session to end');
+      setSessionError('No active session found');
+      return;
+    }
+
+    console.log('Ending sailing session:', currentSessionId);
+    setSessionError(null);
+
+    // Immediately reset session state to prevent race conditions
+    const sessionIdToEnd = currentSessionId;
+    setCurrentSessionId(null);
+    setIsSessionActive(false);
+    setIsStartingSession(false);
 
     // Hide control panel and show loading state
     setShowControlPanel(false);
@@ -291,44 +460,105 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
     setIsLoadingSummary(true);
 
     try {
-      // Simulate API call to backend for summary data
-      // Replace this with actual API call
-      const response = await fetch('/api/sailing-summary', {
+      // Step 1: End sailing session in database
+      console.log('Calling endSession with sessionId:', sessionIdToEnd);
+      let sessionSummary: Record<string, unknown>;
+
+      try {
+        sessionSummary = await auth.endSession(sessionIdToEnd);
+        console.log('Sailing session ended with summary:', sessionSummary);
+      } catch (sessionError) {
+        console.error('Error ending session, using fallback data:', sessionError);
+        // Use default values if session ending fails
+        sessionSummary = {
+          duration_seconds: sessionStartTime ? Math.floor((Date.now() - sessionStartTime.getTime()) / 1000) : 0,
+          focus_seconds: 0,
+          drift_seconds: 0,
+          drift_count: 0,
+          focus_percentage: 0
+        };
+      }
+
+      // Validate session summary data
+      if (!sessionSummary || typeof sessionSummary !== 'object') {
+        console.warn('Invalid session summary received:', sessionSummary);
+        // Use default values if session summary is invalid
+        sessionSummary = {
+          duration_seconds: sessionStartTime ? Math.floor((Date.now() - sessionStartTime.getTime()) / 1000) : 0,
+          focus_seconds: 0,
+          drift_seconds: 0,
+          drift_count: 0,
+          focus_percentage: 0
+        };
+        console.log('Using default session summary:', sessionSummary);
+      }
+
+      // Step 2: Trigger Spline animation
+      await triggerSplineSessionAnimation('end');
+
+      // Step 3: Clean up Realtime channel
+      cleanupRealtimeChannel();
+
+      // Step 4: Generate AI summary
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sailing-summary`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify({
           taskId: selectedTask?.id,
           sessionData: {
-            // Include any session data needed for summary generation
-            startTime: new Date().toISOString(),
+            sessionId: sessionIdToEnd,
             taskTitle: selectedTask?.title,
-            taskPriority: selectedTask?.priority
+            taskCategory: getPriorityText(selectedTask?.priority || 2),
+            startTime: sessionStartTime?.toISOString(),
+            endTime: new Date().toISOString(),
+            durationSeconds: sessionSummary.duration_seconds,
+            focusSeconds: sessionSummary.focus_seconds,
+            driftSeconds: sessionSummary.drift_seconds,
+            driftCount: sessionSummary.drift_count,
+            focusPercentage: sessionSummary.focus_percentage,
+            ...sessionSummary
           }
         })
       });
 
       if (response.ok) {
-        const data = await response.json();
+        const summaryResponse = await response.json();
+        console.log('Voyage summary generated successfully:', summaryResponse);
+
+        // Set the summary data
         setSummaryData({
-          imageUrl: data.imageUrl,
-          summaryText: data.summaryText
+          imageUrl: summaryResponse.imageUrl,
+          summaryText: summaryResponse.summaryText
         });
       } else {
-        // Fallback to mock data if API fails
+        console.error('Failed to generate voyage summary:', response.status, response.statusText);
+        // Show fallback summary with session data
+        const duration = Math.floor((Number(sessionSummary.duration_seconds) || 0) / 60);
+        const focus = Number(sessionSummary.focus_percentage) || 0;
         setSummaryData({
           imageUrl: 'https://images.pexels.com/photos/1001682/pexels-photo-1001682.jpeg?auto=compress&cs=tinysrgb&w=800',
-          summaryText: "Today, you sailed 2.5 hours toward the continent of your thesis. Along the way, you were easily drawn to social media notifications, spending 45 minutes on it. If you'd like to dive deeper into your reflections, check out the Seagull's Human Observation Log. Keep it up—the journey itself is the reward!"
+          summaryText: `Your voyage has been completed successfully! Duration: ${duration} minutes, Focus: ${focus}%`
         });
       }
+
+      // Step 5: Reset additional session state
+      setSessionStartTime(null);
+
     } catch (error) {
-      console.error('Failed to fetch summary data:', error);
-      // Fallback to mock data
+      console.error('Error ending sailing session:', error);
+      setSessionError(error instanceof Error ? error.message : 'Failed to end sailing session');
+
+      // Show error state or fallback summary
       setSummaryData({
         imageUrl: 'https://images.pexels.com/photos/1001682/pexels-photo-1001682.jpeg?auto=compress&cs=tinysrgb&w=800',
-        summaryText: "Today, you sailed 2.5 hours toward the continent of your thesis. Along the way, you were easily drawn to social media notifications, spending 45 minutes on it. If you'd like to dive deeper into your reflections, check out the Seagull's Human Observation Log. Keep it up—the journey itself is the reward!"
+        summaryText: 'Your voyage has been completed, but we were unable to generate a detailed summary at this time.'
       });
+
+      // Reset additional session state on error
+      setSessionStartTime(null);
     } finally {
       setIsLoadingSummary(false);
     }
@@ -337,6 +567,8 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   const handleCloseSummary = () => {
     setShowSummaryPanel(false);
     setSummaryData(undefined);
+    // Reset any remaining session state when closing summary
+    setSessionStartTime(null);
     // Optionally return to journey panel or close entirely
     onClose?.();
   };
@@ -388,6 +620,45 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
                     </p>
                   </div>
                 </div>
+
+                {/* Session Status */}
+                {isSessionActive && (
+                  <div className="mb-4 p-3 bg-gradient-to-br from-green-500/20 via-green-400/15 to-green-600/25 
+                                  backdrop-blur-md rounded-xl border border-green-400/30">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                      <span className="text-green-100 font-inter text-sm">
+                        Sailing session active • {sessionStartTime && `Started ${sessionStartTime.toLocaleTimeString()}`}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Session Error */}
+                {sessionError && (
+                  <div className="mb-4 p-3 bg-gradient-to-br from-red-500/20 via-red-400/15 to-red-600/25 
+                                  backdrop-blur-md rounded-xl border border-red-400/30">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-red-400 rounded-full"></div>
+                      <span className="text-red-100 font-inter text-sm">
+                        {sessionError}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Permissions Status */}
+                {hasPermissions && (
+                  <div className="mb-4 p-3 bg-gradient-to-br from-blue-500/20 via-blue-400/15 to-blue-600/25 
+                                  backdrop-blur-md rounded-xl border border-blue-400/30">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+                      <span className="text-blue-100 font-inter text-sm">
+                        Media permissions granted
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Loading state */}
                 {isLoading && (
@@ -595,18 +866,27 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
                       <div className="pt-4">
                         <button
                           onClick={handleStartJourney}
-                          disabled={selectedTask.completed}
+                          disabled={selectedTask.completed || isStartingSession}
                           className={`w-full px-6 py-3 rounded-xl transition-all duration-300 
                                       font-inter font-medium text-base backdrop-blur-md
                                       border flex items-center justify-center gap-2
                                       transform hover:scale-[1.02] active:scale-[0.98]
-                                      ${selectedTask.completed
+                                      ${selectedTask.completed || isStartingSession
                               ? 'bg-gradient-to-br from-gray-500/20 to-gray-600/20 border-gray-400/30 text-gray-400 cursor-not-allowed'
                               : 'bg-gradient-to-r from-blue-400/30 to-purple-400/30 hover:from-blue-400/40 hover:to-purple-400/40 text-white border-white/25 hover:border-white/35 shadow-[0_8px_24px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.08)]'
                             }`}
                         >
-                          <Sail className="w-5 h-5" />
-                          {selectedTask.completed ? 'Task Completed' : 'Start Journey'}
+                          {isStartingSession ? (
+                            <>
+                              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                              Starting Session...
+                            </>
+                          ) : (
+                            <>
+                              <Sail className="w-5 h-5" />
+                              {selectedTask.completed ? 'Task Completed' : 'Start Journey'}
+                            </>
+                          )}
                         </button>
                       </div>
                     </div>
@@ -632,6 +912,8 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
         isVisible={showControlPanel}
         onClose={() => setShowControlPanel(false)}
         onEndVoyage={handleEndVoyage}
+        sessionId={currentSessionId}
+        isSessionActive={isSessionActive}
       />
 
       {/* Sailing Summary Panel - full screen modal */}
@@ -640,6 +922,21 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
         onClose={handleCloseSummary}
         summaryData={summaryData}
         isLoading={isLoadingSummary}
+      />
+
+      {/* Permission Panel - for requesting media permissions */}
+      <PermissionPanel
+        isVisible={showPermissionPanel}
+        onClose={() => {
+          setShowPermissionPanel(false);
+          // Only start session if we have permissions and no session is active
+          if (hasPermissions && !isSessionActive && !isStartingSession) {
+            setTimeout(() => {
+              startSailingSession();
+            }, 200);
+          }
+        }}
+        onPermissionsGranted={handlePermissionsGranted}
       />
     </>
   );

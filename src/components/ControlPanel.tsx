@@ -1,17 +1,20 @@
 import React, { useState } from 'react';
 import { Mic, MicOff, Video, VideoOff, Monitor, MonitorOff, Anchor } from 'lucide-react';
-import { designSystem } from '../styles/designSystem';
 
 interface ControlPanelProps {
   isVisible: boolean;
   onClose?: () => void;
   onEndVoyage?: () => void;
+  sessionId?: string | null;
+  isSessionActive?: boolean;
 }
 
 export const ControlPanel: React.FC<ControlPanelProps> = ({
   isVisible,
   onClose,
-  onEndVoyage
+  onEndVoyage,
+  sessionId,
+  isSessionActive
 }) => {
   const [micEnabled, setMicEnabled] = useState(false);
   const [videoEnabled, setVideoEnabled] = useState(false);
@@ -48,30 +51,28 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                       before:absolute before:inset-0 before:rounded-3xl 
                       before:bg-gradient-to-br before:from-white/8 before:via-transparent before:to-transparent 
                       before:pointer-events-none overflow-visible">
-        
+
         {/* Inner glow overlay */}
         <div className="absolute inset-0 bg-gradient-to-br from-white/8 via-transparent to-transparent 
                         rounded-3xl pointer-events-none"></div>
-        
+
         {/* All buttons in a single horizontal row */}
         <div className="relative z-10 flex items-center gap-4">
           {/* Microphone Control */}
           <button
             onClick={toggleMic}
             className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 
-                        backdrop-blur-md border shadow-lg relative overflow-visible group ${
-              micEnabled 
-                ? 'bg-green-400/20 border-green-300/30 shadow-green-400/20' 
+                        backdrop-blur-md border shadow-lg relative overflow-visible group ${micEnabled
+                ? 'bg-green-400/20 border-green-300/30 shadow-green-400/20'
                 : 'bg-red-400/20 border-red-300/30 shadow-red-400/20'
-            }`}
+              }`}
           >
             {/* Button inner glow */}
-            <div className={`absolute inset-0 rounded-2xl transition-opacity duration-300 ${
-              micEnabled 
-                ? 'bg-gradient-to-br from-green-300/20 to-green-500/20' 
-                : 'bg-gradient-to-br from-red-300/20 to-red-500/20'
-            }`}></div>
-            
+            <div className={`absolute inset-0 rounded-2xl transition-opacity duration-300 ${micEnabled
+              ? 'bg-gradient-to-br from-green-300/20 to-green-500/20'
+              : 'bg-gradient-to-br from-red-300/20 to-red-500/20'
+              }`}></div>
+
             {micEnabled ? (
               <Mic className="w-5 h-5 text-white relative z-10" />
             ) : (
@@ -94,19 +95,17 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           <button
             onClick={toggleVideo}
             className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 
-                        backdrop-blur-md border shadow-lg relative overflow-visible group ${
-              videoEnabled 
-                ? 'bg-green-400/20 border-green-300/30 shadow-green-400/20' 
+                        backdrop-blur-md border shadow-lg relative overflow-visible group ${videoEnabled
+                ? 'bg-green-400/20 border-green-300/30 shadow-green-400/20'
                 : 'bg-red-400/20 border-red-300/30 shadow-red-400/20'
-            }`}
+              }`}
           >
             {/* Button inner glow */}
-            <div className={`absolute inset-0 rounded-2xl transition-opacity duration-300 ${
-              videoEnabled 
-                ? 'bg-gradient-to-br from-green-300/20 to-green-500/20' 
-                : 'bg-gradient-to-br from-red-300/20 to-red-500/20'
-            }`}></div>
-            
+            <div className={`absolute inset-0 rounded-2xl transition-opacity duration-300 ${videoEnabled
+              ? 'bg-gradient-to-br from-green-300/20 to-green-500/20'
+              : 'bg-gradient-to-br from-red-300/20 to-red-500/20'
+              }`}></div>
+
             {videoEnabled ? (
               <Video className="w-5 h-5 text-white relative z-10" />
             ) : (
@@ -129,19 +128,17 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           <button
             onClick={toggleScreenShare}
             className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 
-                        backdrop-blur-md border shadow-lg relative overflow-visible group ${
-              screenShareEnabled 
-                ? 'bg-green-400/20 border-green-300/30 shadow-green-400/20' 
+                        backdrop-blur-md border shadow-lg relative overflow-visible group ${screenShareEnabled
+                ? 'bg-green-400/20 border-green-300/30 shadow-green-400/20'
                 : 'bg-red-400/20 border-red-300/30 shadow-red-400/20'
-            }`}
+              }`}
           >
             {/* Button inner glow */}
-            <div className={`absolute inset-0 rounded-2xl transition-opacity duration-300 ${
-              screenShareEnabled 
-                ? 'bg-gradient-to-br from-green-300/20 to-green-500/20' 
-                : 'bg-gradient-to-br from-red-300/20 to-red-500/20'
-            }`}></div>
-            
+            <div className={`absolute inset-0 rounded-2xl transition-opacity duration-300 ${screenShareEnabled
+              ? 'bg-gradient-to-br from-green-300/20 to-green-500/20'
+              : 'bg-gradient-to-br from-red-300/20 to-red-500/20'
+              }`}></div>
+
             {screenShareEnabled ? (
               <Monitor className="w-5 h-5 text-white relative z-10" />
             ) : (
@@ -172,9 +169,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             {/* Button inner glow */}
             <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-white/10 to-white/5 
                             opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-            
+
             <Anchor className="w-5 h-5 text-white relative z-10" />
-            
+
             {/* Custom hover tooltip */}
             <span className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-1.5 
                            bg-gradient-to-br from-white/15 via-white/10 to-white/8 
@@ -190,8 +187,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
         {/* Subtle decorative elements */}
         <div className="absolute -top-2 -left-2 w-4 h-4 bg-white/20 rounded-full blur-sm animate-pulse"></div>
-        <div className="absolute -bottom-2 -right-2 w-3 h-3 bg-white/15 rounded-full blur-sm animate-pulse" 
-             style={{animationDelay: '1s'}}></div>
+        <div className="absolute -bottom-2 -right-2 w-3 h-3 bg-white/15 rounded-full blur-sm animate-pulse"
+          style={{ animationDelay: '1s' }}></div>
       </div>
     </div>
   );
