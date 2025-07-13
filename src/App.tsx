@@ -2,7 +2,6 @@ import React from 'react';
 import { SplineScene } from './components/SplineScene';
 import { SplineEventHandler } from './components/SplineEventHandler';
 import { auth, type AnonymousUser } from './lib/auth';
-import { supabase } from './lib/supabase';
 
 function App() {
   const [isModalOpen, setIsModalOpen] = React.useState(false);
@@ -118,26 +117,6 @@ function App() {
         <button
           onClick={async () => {
             try {
-              // Check if there's an active sailing session
-              const currentUser = auth.getCurrentUser();
-              if (currentUser) {
-                const { data: sessions, error } = await supabase
-                  .from('sailing_sessions')
-                  .select('id, status, ended_at')
-                  .eq('user_id', currentUser.id)
-                  .eq('status', 'active')
-                  .is('ended_at', null)
-                  .order('created_at', { ascending: false })
-                  .limit(1);
-
-                if (error) {
-                  console.error('Error checking active sessions:', error);
-                } else if (sessions && sessions.length > 0) {
-                  console.log('🚫 Seagull blocked - sailing session is active');
-                  return;
-                }
-              }
-
               const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/test-seagull-webhook`, {
                 method: 'POST',
                 headers: {

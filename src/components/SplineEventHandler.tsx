@@ -5,7 +5,6 @@ import { LifeGoalsModal } from './LifeGoalsModal'
 import { WelcomePanel } from './WelcomePanel'
 import { JourneyPanel } from './JourneyPanel'
 import { SeagullPanel } from './SeagullPanel'
-import { auth } from '../lib/auth'
 import { designSystem, getButtonStyle, getPanelStyle } from '../styles/designSystem'
 
 interface SplineEvent {
@@ -23,7 +22,7 @@ interface SplineEvent {
     numbaer5?: number
     voiceInteraction?: boolean
     seagullMessage?: string
-    [key: string]: unknown
+    [key: string]: any
   }
   timestamp: string
   source: string
@@ -50,37 +49,6 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
   const lastEventType = useRef<string>('')
   const eventDebounceMs = 2000 // 2 second debounce
 
-  // Check if there's an active sailing session
-  const checkActiveSailingSession = async () => {
-    try {
-      const currentUser = auth.getCurrentUser()
-      if (!currentUser) return false
-
-      const { data: sessions, error } = await supabase
-        .from('sailing_sessions')
-        .select('id, status, ended_at')
-        .eq('user_id', currentUser.id)
-        .eq('status', 'active')
-        .is('ended_at', null)
-        .order('created_at', { ascending: false })
-        .limit(1)
-
-      if (error) {
-        console.error('Error checking active sessions:', error)
-        return false
-      }
-
-      const hasActiveSession = sessions && sessions.length > 0
-      if (hasActiveSession) {
-        console.log('🚨 Active sailing session detected, preventing voice panels')
-      }
-      return hasActiveSession
-    } catch (error) {
-      console.error('Error checking sailing session:', error)
-      return false
-    }
-  }
-
   // Notify parent component of modal state changes
   useEffect(() => {
     const isAnyModalOpen = showModal || showLifeGoalsModal || showWelcomePanel || showJourneyPanel || showSeagullPanel;
@@ -100,7 +68,7 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
     const channel = supabase.channel('spline-events')
 
     channel
-      .on('broadcast', { event: 'spline_interaction' }, async (payload) => {
+      .on('broadcast', { event: 'spline_interaction' }, (payload) => {
         const event = payload.payload as SplineEvent
 
         console.log('=== FRONTEND RECEIVED SPLINE EVENT ===')
@@ -213,15 +181,6 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
         // No default fallback - only show modals for explicit triggers
         else {
           console.log('⚠️ No matching condition found for event, not showing any modal')
-        }
-
-        // Check if sailing session is active before showing voice panels
-        const isSessionActive = await checkActiveSailingSession()
-
-        // Prevent voice panels during active sailing sessions
-        if (isSessionActive && (shouldShowSeagull || shouldShowWelcome)) {
-          console.log('🚫 Voice panel blocked - sailing session is active')
-          return
         }
 
         // Execute decision - use delay to ensure state update
@@ -354,6 +313,7 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
       {/* Welcome Panel - Left side fixed position */}
       <WelcomePanel
         isVisible={showWelcomePanel}
+        onClose={() => setShowWelcomePanel(false)}
         onVoiceSubmitSuccess={handleVoiceSubmitSuccess}
       />
 
