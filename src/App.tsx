@@ -1,9 +1,35 @@
 import React from 'react';
+import { supabase } from './lib/supabase';
 import { SplineScene } from './components/SplineScene';
 import { SplineEventHandler } from './components/SplineEventHandler';
 
 function App() {
   const [isModalOpen, setIsModalOpen] = React.useState(false);
+  const [isAuthLoading, setIsAuthLoading] = React.useState(true);
+
+  // Initialize anonymous authentication on app start
+  React.useEffect(() => {
+    const initializeAuth = async () => {
+      try {
+        // Check for existing session
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session) {
+          // No session exists, create anonymous user
+          const { error } = await supabase.auth.signInAnonymously();
+          if (error) {
+            console.error('Error creating anonymous session:', error);
+          }
+        }
+      } catch (error) {
+        console.error('Error initializing authentication:', error);
+      } finally {
+        setIsAuthLoading(false);
+      }
+    };
+
+    initializeAuth();
+  }, []);
 
   const handleSplineEvent = (event: any) => {
     console.log('Spline event received in App:', event);
@@ -23,6 +49,15 @@ function App() {
       window.removeEventListener('modalStateChange', handleModalStateChange as EventListener);
     };
   }, []);
+
+  // Show loading while authentication is being initialized
+  if (isAuthLoading) {
+    return (
+      <div className="h-screen bg-black flex items-center justify-center">
+        <div className="text-white">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative h-screen">
