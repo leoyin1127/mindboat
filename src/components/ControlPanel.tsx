@@ -1,17 +1,29 @@
 import React, { useState } from 'react';
 import { Mic, MicOff, Video, VideoOff, Monitor, MonitorOff, Anchor } from 'lucide-react';
 import { designSystem } from '../styles/designSystem';
+import { SailingTimer } from './SailingTimer';
+
+interface SailingSession {
+  sessionId: string;
+  taskId: string;
+  startTime: string;
+  status: 'sailing' | 'drifting';
+}
 
 interface ControlPanelProps {
   isVisible: boolean;
   onClose?: () => void;
   onEndVoyage?: () => void;
+  session?: SailingSession | null;
+  startTime?: Date | null;
 }
 
 export const ControlPanel: React.FC<ControlPanelProps> = ({
   isVisible,
   onClose,
-  onEndVoyage
+  onEndVoyage,
+  session,
+  startTime
 }) => {
   const [micEnabled, setMicEnabled] = useState(false);
   const [videoEnabled, setVideoEnabled] = useState(false);
@@ -55,6 +67,17 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         
         {/* All buttons in a single horizontal row */}
         <div className="relative z-10 flex items-center gap-4">
+          {/* Sailing Timer - leftmost */}
+          {session && startTime && (
+            <div className="mr-2">
+              <SailingTimer 
+                startTime={startTime}
+                isActive={true}
+                className="text-white/90"
+              />
+            </div>
+          )}
+          
           {/* Microphone Control */}
           <button
             onClick={toggleMic}

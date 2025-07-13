@@ -3,6 +3,8 @@ import { Compass, CheckCircle, Circle, Mail as Sail, Mountain, BookOpen, Palette
 import { designSystem, getButtonStyle, getPanelStyle, getIconContainerStyle, getInnerGlowStyle } from '../styles/designSystem';
 import { ControlPanel } from './ControlPanel';
 import { SailingSummaryPanel } from './SailingSummaryPanel';
+import { PermissionRequestModal } from './PermissionRequestModal';
+import { SailingTimer } from './SailingTimer';
 
 interface Task {
   id: string;
@@ -12,6 +14,19 @@ interface Task {
   category: 'writing' | 'design' | 'learning' | 'personal';
   imageUrl: string;
   details: string;
+}
+
+interface MediaPermissions {
+  camera: boolean;
+  microphone: boolean;
+  screen: boolean;
+}
+
+interface SailingSession {
+  sessionId: string;
+  taskId: string;
+  startTime: string;
+  status: 'sailing' | 'drifting';
 }
 
 interface SailingSummaryData {
@@ -88,6 +103,10 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   const [showSummaryPanel, setShowSummaryPanel] = useState(false);
   const [summaryData, setSummaryData] = useState<SailingSummaryData | null>(null);
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
+  const [currentSession, setCurrentSession] = useState<SailingSession | null>(null);
+  const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
+  const [websocket, setWebsocket] = useState<WebSocket | null>(null);
 
   const toggleTaskCompletion = (taskId: string) => {
     setTasks(prev => prev.map(task => 
@@ -96,10 +115,30 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   };
 
   const handleStartJourney = async () => {
-    console.log('Starting journey with task:', selectedTask.title);
+    console.log('Requesting permissions for journey with task:', selectedTask.title);
+    setShowPermissionModal(true);
+  };
+
+  const handlePermissionsGranted = async (permissions: MediaPermissions) => {
+    console.log('Permissions granted:', permissions);
+    setShowPermissionModal(false);
     
     try {
-      // Send webhook via backend proxy
+      // A) Trigger immediate animation via Spline webhook
+      await triggerSplineAnimation();
+      
+      // B) Start backend session
+      await startBackendSession();
+      
+    } catch (error) {
+      console.error('Error starting journey:', error);
+    }
+  };
+
+  const triggerSplineAnimation = async () => {
+    console.log('Triggering Spline sailing animation...');
+    
+    try {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/spline-proxy`, {
         method: 'POST',
         headers: {
@@ -108,19 +147,79 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
         },
         body: JSON.stringify({ 
           webhookUrl: 'https://hooks.spline.design/vS-vioZuERs',
-          payload: { numbaer2: 0 }
+          payload: { numbaer2: 0 } // Start sailing animation
         })
       });
 
       if (response.ok) {
         const responseData = await response.json();
-        console.log('Journey webhook sent successfully:', responseData);
+        console.log('Spline sailing animation triggered successfully:', responseData);
       } else {
-        console.error('Failed to send journey webhook:', response.status, response.statusText);
+        console.error('Failed to trigger Spline animation:', response.status, response.statusText);
       }
     } catch (error) {
-      console.error('Error sending journey webhook:', error);
+      console.error('Error triggering Spline animation:', error);
     }
+  };
+
+  const startBackendSession = async () => {
+    console.log('Starting backend session...');
+    
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/session-start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          userId: localStorage.getItem('mindboat_device_id'),
+          taskId: selectedTask.id
+        })
+      });
+
+      if (response.ok) {
+        const sessionData = await response.json();
+        console.log('Backend session started successfully:', sessionData);
+        
+        // Set session state
+        const session: SailingSession = {
+          sessionId: sessionData.sessionId,
+          taskId: selectedTask.id,
+          startTime: sessionData.startTime || new Date().toISOString(),
+          status: 'sailing'
+        };
+        
+        setCurrentSession(session);
+        setSessionStartTime(new Date(session.startTime));
+        
+        // Establish WebSocket connection
+        establishWebSocketConnection(session.sessionId);
+        
+        // Hide journey panel and show control panel
+        setShowControlPanel(true);
+        onClose?.();
+      } else {
+        console.error('Failed to start backend session:', response.status, response.statusText);
+      }
+    } catch (error) {
+      console.error('Error starting backend session:', error);
+    }
+  };
+
+  const establishWebSocketConnection = (sessionId: string) => {
+    console.log('Establishing WebSocket connection for session:', sessionId);
+    
+    // TODO: Implement WebSocket connection for real-time status updates
+    // This would connect to a WebSocket endpoint that provides real-time
+    // sailing status updates (sailing vs drifting) based on the dual-track analysis
+    
+    // Placeholder for WebSocket implementation
+    console.log('WebSocket connection established (placeholder)');
+  };
+
+  const handleEndVoyage = async () => {
+    console.log('Ending voyage...');
     
     // Hide the journey panel and show control panel
     setShowControlPanel(true);
@@ -334,11 +433,21 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
         </div>
       )}
 
+      {/* Permission Request Modal */}
+      <PermissionRequestModal
+        isVisible={showPermissionModal}
+        onClose={() => setShowPermissionModal(false)}
+        onPermissionsGranted={handlePermissionsGranted}
+        taskTitle={selectedTask?.title || 'Unknown Task'}
+      />
+
       {/* Control Panel - floating at bottom center */}
-      <ControlPanel 
+      <ControlPanel
         isVisible={showControlPanel}
         onClose={() => setShowControlPanel(false)}
         onEndVoyage={handleEndVoyage}
+        session={currentSession}
+        startTime={sessionStartTime}
       />
 
       {/* Sailing Summary Panel - full screen modal */}
