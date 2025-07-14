@@ -173,7 +173,7 @@ CREATE TABLE drift_events (
     
     -- Core focus data from Dify
     is_drifting BOOLEAN NOT NULL,
-    reason TEXT,
+    drift_reason TEXT,
     actual_task TEXT,
     user_mood TEXT,
     mood_reason TEXT,

@@ -485,11 +485,40 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       // Set up video element
       video.srcObject = stream;
       video.muted = true;
-      await video.play();
-      
+      video.setAttribute('playsinline', 'true');
+
+      // Log any immediate errors on the <video> element
+      video.addEventListener('error', (ev) => {
+        console.error('🎥 DEBUG: <video> element error', ev);
+      });
+
+      // Attempt to play the video – catch promise rejection explicitly
+      try {
+        await video.play();
+        console.log('🎥 DEBUG: video.play() resolved');
+      } catch (playErr) {
+        console.error('❌ DEBUG: video.play() rejected', playErr);
+        throw playErr;
+      }
+
+      // Wait for first frame to be ready (loadedmetadata)
+      let metadataResolved = false;
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          if (!metadataResolved) {
+            console.warn('⏱️ DEBUG: loadedmetadata timeout (1s) – dimensions:', video.videoWidth, 'x', video.videoHeight);
+            resolve(null);
+          }
+        }, 1000);
+        video.onloadedmetadata = () => {
+          metadataResolved = true;
+          clearTimeout(timeout);
+          resolve(null);
+        };
+      });
+       
       // Wait for first frame to be ready
-      await new Promise(resolve => video.onloadedmetadata = resolve);
-      console.log('🎥 DEBUG: Video dimensions:', video.videoWidth, 'x', video.videoHeight);
+      console.log('🎥 DEBUG: Video dimensions after metadata/timeout:', video.videoWidth, 'x', video.videoHeight);
 
       // Compress to reasonable size (640x360) to reduce payload
       const targetWidth = 640;
@@ -662,7 +691,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       
       // Log drift status for debugging
       if (data.is_drifting) {
-        console.warn('🚨 Drift detected:', data.reason);
+        console.warn('🚨 Drift detected:', data.drift_reason);
       } else {
         console.log('✨ User focused:', data.actual_task);
       }

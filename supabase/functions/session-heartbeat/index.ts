@@ -17,7 +17,7 @@ interface DifyResponse {
 interface SessionHeartbeatResponse {
   success: boolean;
   is_drifting: boolean;
-  reason: string;
+  drift_reason: string;
   actual_task: string;
   user_mood?: string | null;
   mood_reason?: string | null;
@@ -180,7 +180,7 @@ serve(async (req) => {
           session_id: sessionId,
           user_id: userId,
           is_drifting: false,
-          reason: 'No media available for analysis',
+          drift_reason: 'No media available for analysis',
           actual_task: taskName,
           user_mood: null,
           mood_reason: null,
@@ -280,7 +280,7 @@ serve(async (req) => {
         session_id: sessionId,
         user_id: userId,
         is_drifting: analysisResult.is_drifting,
-        reason: analysisResult.reasons,
+        drift_reason: analysisResult.reasons,
         actual_task: analysisResult.actual_current_task,
         user_mood: analysisResult.user_mood || null,
         mood_reason: analysisResult.mood_reason || null,

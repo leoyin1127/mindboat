@@ -14,7 +14,7 @@ CREATE TABLE drift_events (
     
     -- Core focus data from Dify
     is_drifting BOOLEAN NOT NULL,
-    reason TEXT,
+    drift_reason TEXT,
     actual_task TEXT,
     user_mood TEXT,
     mood_reason TEXT,
@@ -43,7 +43,7 @@ FOR ALL USING (true); -- For now, allow all access for anonymous auth
 -- Add helpful comment
 COMMENT ON TABLE drift_events IS 'Per-minute focus monitoring log for distraction detection system';
 COMMENT ON COLUMN drift_events.is_drifting IS 'Whether user was detected as drifting during this heartbeat';
-COMMENT ON COLUMN drift_events.reason IS 'Dify explanation for the focus assessment';
+COMMENT ON COLUMN drift_events.drift_reason IS 'Dify explanation for the focus assessment';
 COMMENT ON COLUMN drift_events.actual_task IS 'What Dify detected the user was actually doing';
 COMMENT ON COLUMN drift_events.user_mood IS 'Optional mood assessment from Dify';
 COMMENT ON COLUMN drift_events.mood_reason IS 'Optional explanation for mood assessment';
