@@ -107,6 +107,10 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [micStream, setMicStream] = useState<MediaStream | null>(null);
   
+  // Refs to avoid stale closures in heartbeat callbacks
+  const videoStreamRef = useRef<MediaStream | null>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
+  
   // Refs for video elements
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const screenRef = useRef<HTMLVideoElement | null>(null);
@@ -346,6 +350,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
         // Turn off video
         videoStream.getTracks().forEach(track => track.stop());
         setVideoStream(null);
+        videoStreamRef.current = null;
         setIsVideoOn(false);
         if (videoRef.current) {
           videoRef.current.srcObject = null;
@@ -360,6 +365,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
           } 
         });
         setVideoStream(stream);
+        videoStreamRef.current = stream;
         setIsVideoOn(true);
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -378,6 +384,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
         // Stop screen sharing
         screenStream.getTracks().forEach(track => track.stop());
         setScreenStream(null);
+        screenStreamRef.current = null;
         setIsScreenSharing(false);
         if (screenRef.current) {
           screenRef.current.srcObject = null;
@@ -390,6 +397,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
           audio: true 
         });
         setScreenStream(stream);
+        screenStreamRef.current = stream;
         setIsScreenSharing(true);
         if (screenRef.current) {
           screenRef.current.srcObject = stream;
@@ -398,6 +406,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
         // Handle when user stops sharing via browser UI
         stream.getVideoTracks()[0].addEventListener('ended', () => {
           setScreenStream(null);
+          screenStreamRef.current = null;
           setIsScreenSharing(false);
           if (screenRef.current) {
             screenRef.current.srcObject = null;
@@ -440,11 +449,13 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
     if (videoStream) {
       videoStream.getTracks().forEach(track => track.stop());
       setVideoStream(null);
+      videoStreamRef.current = null;
       setIsVideoOn(false);
     }
     if (screenStream) {
       screenStream.getTracks().forEach(track => track.stop());
       setScreenStream(null);
+      screenStreamRef.current = null;
       setIsScreenSharing(false);
     }
     if (micStream) {
@@ -457,7 +468,8 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
 
   // Image capture utilities for heartbeat system
   const captureCameraFrame = async (): Promise<Blob | null> => {
-    if (!videoStream || !isVideoOn) {
+    const stream = videoStreamRef.current;
+    if (!stream) {
       console.warn('No video stream available for camera capture');
       return null;
     }
@@ -467,7 +479,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       const video = document.createElement('video');
       
       // Set up video element
-      video.srcObject = videoStream;
+      video.srcObject = stream;
       video.muted = true;
       await video.play();
 
@@ -496,7 +508,8 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   };
 
   const captureScreenFrame = async (): Promise<Blob | null> => {
-    if (!screenStream || !isScreenSharing) {
+    const stream = screenStreamRef.current;
+    if (!stream) {
       console.warn('No screen stream available for screen capture');
       return null;
     }
@@ -506,7 +519,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       const video = document.createElement('video');
       
       // Set up video element
-      video.srcObject = screenStream;
+      video.srcObject = stream;
       video.muted = true;
       await video.play();
 
@@ -607,8 +620,8 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
     console.log('🔄 Starting heartbeat monitoring (60s intervals) for session:', sessionId);
     setIsHeartbeatActive(true);
     
-    // Send first heartbeat immediately
-    setTimeout(() => sendHeartbeat(sessionId, isActive), 5000); // Wait 5 seconds for streams to stabilize
+    // Send first heartbeat after longer delay to ensure streams are ready
+    setTimeout(() => sendHeartbeat(sessionId, isActive), 8000); // Wait 8 seconds for streams to stabilize
     
     // Then send every 60 seconds
     heartbeatIntervalRef.current = setInterval(() => sendHeartbeat(sessionId, isActive), 60000);
