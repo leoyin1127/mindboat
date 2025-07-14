@@ -475,6 +475,10 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
     }
 
     try {
+      console.log('🎥 DEBUG: Starting camera capture...');
+      const tracks = stream.getVideoTracks();
+      console.log('🎥 DEBUG: Video tracks:', tracks.length, tracks[0]?.readyState);
+      
       const canvas = document.createElement('canvas');
       const video = document.createElement('video');
       
@@ -482,6 +486,10 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       video.srcObject = stream;
       video.muted = true;
       await video.play();
+      
+      // Wait for first frame to be ready
+      await new Promise(resolve => video.onloadedmetadata = resolve);
+      console.log('🎥 DEBUG: Video dimensions:', video.videoWidth, 'x', video.videoHeight);
 
       // Compress to reasonable size (640x360) to reduce payload
       const targetWidth = 640;
@@ -514,11 +522,12 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       // Convert to blob with higher compression (0.65 quality)
       return new Promise((resolve) => {
         canvas.toBlob((blob) => {
+          console.log('🎥 DEBUG: Camera blob created:', blob ? `${(blob.size / 1024).toFixed(1)}KB` : 'NULL');
           resolve(blob);
         }, 'image/jpeg', 0.65);
       });
     } catch (error) {
-      console.error('Error capturing camera frame:', error);
+      console.error('❌ Error capturing camera frame:', error);
       return null;
     }
   };
@@ -531,6 +540,10 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
     }
 
     try {
+      console.log('🖥️ DEBUG: Starting screen capture...');
+      const tracks = stream.getVideoTracks();
+      console.log('🖥️ DEBUG: Screen tracks:', tracks.length, tracks[0]?.readyState);
+      
       const canvas = document.createElement('canvas');
       const video = document.createElement('video');
       
@@ -538,6 +551,10 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       video.srcObject = stream;
       video.muted = true;
       await video.play();
+      
+      // Wait for first frame to be ready
+      await new Promise(resolve => video.onloadedmetadata = resolve);
+      console.log('🖥️ DEBUG: Screen dimensions:', video.videoWidth, 'x', video.videoHeight);
 
       // Compress screen capture to reasonable size (960x540) to reduce payload
       const targetWidth = 960;
@@ -570,11 +587,12 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       // Convert to blob with higher compression (0.65 quality)
       return new Promise((resolve) => {
         canvas.toBlob((blob) => {
+          console.log('🖥️ DEBUG: Screen blob created:', blob ? `${(blob.size / 1024).toFixed(1)}KB` : 'NULL');
           resolve(blob);
         }, 'image/jpeg', 0.65);
       });
     } catch (error) {
-      console.error('Error capturing screen frame:', error);
+      console.error('❌ Error capturing screen frame:', error);
       return null;
     }
   };
@@ -600,20 +618,31 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
 
     try {
       // Capture images from active streams
+      console.log('📸 DEBUG: Starting capture process...');
       const [cameraBlob, screenBlob] = await Promise.all([
         captureCameraFrame(),
         captureScreenFrame()
       ]);
 
+      console.log('📸 DEBUG: Capture results:', {
+        camera: cameraBlob ? `${(cameraBlob.size / 1024).toFixed(1)}KB` : 'NULL',
+        screen: screenBlob ? `${(screenBlob.size / 1024).toFixed(1)}KB` : 'NULL'
+      });
+
       // Skip heartbeat if no images captured
       if (!cameraBlob && !screenBlob) {
-        console.warn('Heartbeat skipped: No media to send.')
+        console.warn('⚠️ Heartbeat skipped: No media to send.')
         return;
       }
 
       // Convert blobs to base64 strings
       const cameraImageBase64 = cameraBlob ? await blobToBase64(cameraBlob) : null
       const screenImageBase64 = screenBlob ? await blobToBase64(screenBlob) : null
+
+      console.log('📸 DEBUG: Base64 conversion:', {
+        camera: cameraImageBase64 ? `${cameraImageBase64.slice(0, 50)}...` : 'NULL',
+        screen: screenImageBase64 ? `${screenImageBase64.slice(0, 50)}...` : 'NULL'
+      });
 
       // Invoke the backend function with the new payload
       const { data, error } = await supabase.functions.invoke('session-heartbeat', {

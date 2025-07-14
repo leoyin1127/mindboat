@@ -24,23 +24,31 @@ interface SessionHeartbeatResponse {
   message: string;
 }
 
+// Helper function to convert data URL to Blob (Deno doesn't support data: URLs in fetch)
+function dataUrlToBlob(dataUrl: string): Blob {
+  const [header, b64] = dataUrl.split(',')
+  const mime = header.match(/data:(.+);base64/)?.[1] || 'image/jpeg'
+  const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0))
+  return new Blob([bytes], { type: mime })
+}
+
 // Helper function to upload a single image to Dify
 async function uploadImageToDify(base64Image: string, userId: string, imageType: 'camera' | 'screen'): Promise<string | null> {
   const DIFY_API_KEY = Deno.env.get('DIFY_API_KEY')!
   const DIFY_API_URL = Deno.env.get('DIFY_API_URL')!
 
   try {
-    console.log(`📤 Uploading ${imageType} image to Dify for user ${userId}`)
+    console.log(`📤 DEBUG: Uploading ${imageType} image to Dify for user ${userId}`)
+    console.log(`📤 DEBUG: Base64 header: ${base64Image.slice(0, 50)}...`)
     
-    // Convert base64 data URI to a Blob
-    const fetchRes = await fetch(base64Image)
-    const blob = await fetchRes.blob()
+    // Convert base64 data URI to a Blob using custom function
+    const blob = dataUrlToBlob(base64Image)
     
     console.log(`📊 Blob info - Type: ${blob.type}, Size: ${blob.size} bytes (${(blob.size / 1024 / 1024).toFixed(2)} MB)`)
     
-    // Size guard - reject if over 1.5 MB
-    if (blob.size > 1.5 * 1024 * 1024) {
-      throw new Error(`Image too large: ${(blob.size / 1024 / 1024).toFixed(2)} MB (max 1.5 MB)`)
+    // Size guard - reject if over 3 MB
+    if (blob.size > 3 * 1024 * 1024) {
+      throw new Error(`Image too large: ${(blob.size / 1024 / 1024).toFixed(2)} MB (max 3 MB)`)
     }
     
     // Generate filename that matches blob MIME type
@@ -101,6 +109,14 @@ serve(async (req) => {
     // Parse JSON body instead of FormData
     const body = await req.json()
     const { sessionId, cameraImage, screenImage } = body
+
+    console.log('📊 DEBUG: Received heartbeat data:', {
+      sessionId,
+      hasCamera: !!cameraImage,
+      hasScreen: !!screenImage,
+      cameraSize: cameraImage ? `${Math.round(cameraImage.length / 1024)}KB` : 'N/A',
+      screenSize: screenImage ? `${Math.round(screenImage.length / 1024)}KB` : 'N/A'
+    })
 
     if (!sessionId) {
       throw new Error('Session ID is required')
