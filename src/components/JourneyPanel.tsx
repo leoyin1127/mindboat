@@ -545,13 +545,13 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
     })
   }
 
-  const sendHeartbeat = async () => {
-    if (!currentSessionId || !isSessionActive) {
-      console.log('No active session for heartbeat');
+  const sendHeartbeat = async (sessionId: string, isActive: boolean) => {
+    if (!sessionId || !isActive) {
+      console.log('Invalid session parameters for heartbeat:', { sessionId, isActive });
       return;
     }
 
-    console.log('📊 Sending heartbeat for session:', currentSessionId);
+    console.log('📊 Sending heartbeat for session:', sessionId);
 
     try {
       // Capture images from active streams
@@ -573,7 +573,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       // Invoke the backend function with the new payload
       const { data, error } = await supabase.functions.invoke('session-heartbeat', {
         body: { 
-          sessionId: currentSessionId, 
+          sessionId: sessionId, 
           cameraImage: cameraImageBase64,
           screenImage: screenImageBase64 
         },
@@ -598,20 +598,20 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   };
 
   // Start heartbeat monitoring
-  const startHeartbeat = () => {
+  const startHeartbeat = (sessionId: string, isActive: boolean) => {
     if (heartbeatIntervalRef.current) {
       console.log('Heartbeat already active');
       return;
     }
 
-    console.log('🔄 Starting heartbeat monitoring (60s intervals)');
+    console.log('🔄 Starting heartbeat monitoring (60s intervals) for session:', sessionId);
     setIsHeartbeatActive(true);
     
     // Send first heartbeat immediately
-    setTimeout(sendHeartbeat, 5000); // Wait 5 seconds for streams to stabilize
+    setTimeout(() => sendHeartbeat(sessionId, isActive), 5000); // Wait 5 seconds for streams to stabilize
     
     // Then send every 60 seconds
-    heartbeatIntervalRef.current = setInterval(sendHeartbeat, 60000);
+    heartbeatIntervalRef.current = setInterval(() => sendHeartbeat(sessionId, isActive), 60000);
   };
 
   // Stop heartbeat monitoring
@@ -743,7 +743,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       setSessionStartTime(new Date());
 
       // Step 6: Start heartbeat monitoring for distraction detection
-      startHeartbeat();
+      startHeartbeat(sessionId, true);
 
       // Step 7: Show control panel and hide journey panel
       setShowControlPanel(true);
