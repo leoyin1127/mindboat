@@ -557,6 +557,18 @@ export const WelcomePanel: React.FC<WelcomePanelProps> = ({
                   </div>
                 )}
 
+                {/* Skip button - only show when not recording and no transcript */}
+                {!isRecording && !transcript && !isProcessing && error.type === null && (
+                  <div className="pt-2">
+                    <button
+                      onClick={onVoiceSubmitSuccess}
+                      className="text-white/60 hover:text-white/80 text-sm font-inter underline transition-colors duration-200"
+                    >
+                      Skip for now
+                    </button>
+                  </div>
+                )}
+
                 {/* Instructions */}
                 <p className={`${designSystem.typography.sizes.sm} ${designSystem.colors.text.muted}`}>
                   {error.type !== null ? 'Please resolve the error above to continue' :
