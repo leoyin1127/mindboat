@@ -483,23 +483,39 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       video.muted = true;
       await video.play();
 
-      // Set canvas dimensions
-      canvas.width = video.videoWidth || 640;
-      canvas.height = video.videoHeight || 480;
+      // Compress to reasonable size (640x360) to reduce payload
+      const targetWidth = 640;
+      const targetHeight = 360;
+      const sourceWidth = video.videoWidth || 640;
+      const sourceHeight = video.videoHeight || 480;
+      
+      // Calculate aspect ratio preserving dimensions
+      const aspectRatio = sourceWidth / sourceHeight;
+      let finalWidth = targetWidth;
+      let finalHeight = targetHeight;
+      
+      if (aspectRatio > (targetWidth / targetHeight)) {
+        finalHeight = targetWidth / aspectRatio;
+      } else {
+        finalWidth = targetHeight * aspectRatio;
+      }
+
+      canvas.width = finalWidth;
+      canvas.height = finalHeight;
 
       const ctx = canvas.getContext('2d');
       if (!ctx) {
         throw new Error('Could not get canvas context');
       }
 
-      // Draw video frame to canvas
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      // Draw video frame to canvas with compression
+      ctx.drawImage(video, 0, 0, finalWidth, finalHeight);
 
-      // Convert to blob
+      // Convert to blob with higher compression (0.65 quality)
       return new Promise((resolve) => {
         canvas.toBlob((blob) => {
           resolve(blob);
-        }, 'image/jpeg', 0.8);
+        }, 'image/jpeg', 0.65);
       });
     } catch (error) {
       console.error('Error capturing camera frame:', error);
@@ -523,23 +539,39 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       video.muted = true;
       await video.play();
 
-      // Set canvas dimensions
-      canvas.width = video.videoWidth || 1280;
-      canvas.height = video.videoHeight || 720;
+      // Compress screen capture to reasonable size (960x540) to reduce payload
+      const targetWidth = 960;
+      const targetHeight = 540;
+      const sourceWidth = video.videoWidth || 1280;
+      const sourceHeight = video.videoHeight || 720;
+      
+      // Calculate aspect ratio preserving dimensions
+      const aspectRatio = sourceWidth / sourceHeight;
+      let finalWidth = targetWidth;
+      let finalHeight = targetHeight;
+      
+      if (aspectRatio > (targetWidth / targetHeight)) {
+        finalHeight = targetWidth / aspectRatio;
+      } else {
+        finalWidth = targetHeight * aspectRatio;
+      }
+
+      canvas.width = finalWidth;
+      canvas.height = finalHeight;
 
       const ctx = canvas.getContext('2d');
       if (!ctx) {
         throw new Error('Could not get canvas context');
       }
 
-      // Draw video frame to canvas
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      // Draw video frame to canvas with compression
+      ctx.drawImage(video, 0, 0, finalWidth, finalHeight);
 
-      // Convert to blob
+      // Convert to blob with higher compression (0.65 quality)
       return new Promise((resolve) => {
         canvas.toBlob((blob) => {
           resolve(blob);
-        }, 'image/jpeg', 0.8);
+        }, 'image/jpeg', 0.65);
       });
     } catch (error) {
       console.error('Error capturing screen frame:', error);

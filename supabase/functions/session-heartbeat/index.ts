@@ -25,32 +25,57 @@ interface SessionHeartbeatResponse {
 }
 
 // Helper function to upload a single image to Dify
-async function uploadImageToDify(base64Image: string, userId: string): Promise<string> {
+async function uploadImageToDify(base64Image: string, userId: string, imageType: 'camera' | 'screen'): Promise<string | null> {
   const DIFY_API_KEY = Deno.env.get('DIFY_API_KEY')!
   const DIFY_API_URL = Deno.env.get('DIFY_API_URL')!
 
-  // Convert base64 data URI to a Blob
-  const fetchRes = await fetch(base64Image)
-  const blob = await fetchRes.blob()
+  try {
+    console.log(`📤 Uploading ${imageType} image to Dify for user ${userId}`)
+    
+    // Convert base64 data URI to a Blob
+    const fetchRes = await fetch(base64Image)
+    const blob = await fetchRes.blob()
+    
+    console.log(`📊 Blob info - Type: ${blob.type}, Size: ${blob.size} bytes (${(blob.size / 1024 / 1024).toFixed(2)} MB)`)
+    
+    // Size guard - reject if over 1.5 MB
+    if (blob.size > 1.5 * 1024 * 1024) {
+      throw new Error(`Image too large: ${(blob.size / 1024 / 1024).toFixed(2)} MB (max 1.5 MB)`)
+    }
+    
+    // Generate filename that matches blob MIME type
+    const extension = blob.type === 'image/png' ? 'png'
+                     : blob.type === 'image/webp' ? 'webp'
+                     : 'jpg'
+    const filename = `heartbeat_${imageType}.${extension}`
+    
+    const formData = new FormData()
+    formData.append('file', blob, filename)
+    formData.append('user', userId)
+    
+    console.log(`📋 FormData keys: ${Array.from(formData.keys()).join(', ')}, filename: ${filename}`)
 
-  const formData = new FormData()
-  formData.append('file', blob, 'heartbeat.webp') // Dify requires a filename
-  formData.append('user', userId) // The 'user' who is uploading
+    const response = await fetch(`${DIFY_API_URL}/files/upload`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${DIFY_API_KEY}`,
+      },
+      body: formData,
+    })
 
-  const response = await fetch(`${DIFY_API_URL}/files/upload`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${DIFY_API_KEY}`,
-    },
-    body: formData,
-  })
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Dify file upload failed (${response.status}): ${errorText}`)
+    }
 
-  if (!response.ok) {
-    throw new Error(`Dify file upload failed: ${await response.text()}`)
+    const result = await response.json()
+    console.log(`✅ ${imageType} image uploaded successfully, file ID: ${result.id}`)
+    return result.id
+    
+  } catch (difyErr) {
+    console.error(`❌ Dify upload failed for ${imageType} image:`, difyErr)
+    return null // Let heartbeat continue with other image
   }
-
-  const { id } = await response.json()
-  return id
 }
 
 serve(async (req) => {
@@ -121,12 +146,48 @@ serve(async (req) => {
 
     // Step 2: Upload images directly to Dify
     const fileIds = await Promise.all([
-      cameraImage ? uploadImageToDify(cameraImage, `user_${userId}`) : Promise.resolve(null),
-      screenImage ? uploadImageToDify(screenImage, `user_${userId}`) : Promise.resolve(null),
+      cameraImage ? uploadImageToDify(cameraImage, `user_${userId}`, 'camera') : Promise.resolve(null),
+      screenImage ? uploadImageToDify(screenImage, `user_${userId}`, 'screen') : Promise.resolve(null),
     ])
     
     const [cameraFileId, screenFileId] = fileIds
     console.log('📤 Images uploaded to Dify:', { cameraFileId, screenFileId })
+
+    // Check if we have any valid uploads
+    if (!cameraFileId && !screenFileId) {
+      console.warn('⚠️ No images uploaded successfully, returning default focused state')
+      
+      // Log a drift event with no media available
+      const { error: insertError } = await supabase
+        .from('drift_events')
+        .insert({
+          session_id: sessionId,
+          user_id: userId,
+          is_drifting: false,
+          reason: 'No media available for analysis',
+          actual_task: taskName,
+          user_mood: null,
+          mood_reason: null,
+          intervention_triggered: false
+        })
+
+      if (insertError) {
+        console.error('Error inserting drift event:', insertError)
+      }
+
+      return new Response(JSON.stringify({
+        success: true,
+        is_drifting: false,
+        reason: 'No media available for analysis',
+        actual_task: taskName,
+        user_mood: null,
+        mood_reason: null,
+        message: 'Heartbeat received but no media available - assuming focused'
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200
+      })
+    }
 
     // Step 3: Call Dify API for focus analysis using file IDs
     const difyPayload = {
