@@ -734,6 +734,30 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
         // Continue with session even if microphone fails
       }
 
+      // Step 3.5: Initialize camera stream for heartbeat monitoring
+      if (!isVideoOn && !videoStream) {
+        try {
+          console.log('Initializing camera for heartbeat monitoring...');
+          await toggleVideo();
+          console.log('Camera initialized for session');
+        } catch (cameraError) {
+          console.warn('Could not initialize camera for session:', cameraError);
+          // Continue with session even if camera fails
+        }
+      }
+
+      // Step 3.6: Initialize screen sharing for heartbeat monitoring
+      if (!isScreenSharing && !screenStream) {
+        try {
+          console.log('Initializing screen sharing for heartbeat monitoring...');
+          await toggleScreenShare();
+          console.log('Screen sharing initialized for session');
+        } catch (screenError) {
+          console.warn('Could not initialize screen sharing for session:', screenError);
+          // Continue with session even if screen sharing fails
+        }
+      }
+
       // Step 4: Trigger Spline animation
       await triggerSplineSessionAnimation('start');
 
