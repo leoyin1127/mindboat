@@ -1,5 +1,4 @@
 # Project Requirements Document
-
 **Product Name:** *“Mindship” (意念小船)*
 **Project Language:** *English*
 **Product Description:** 
@@ -18,6 +17,10 @@
 4. **Stay on Course With Smart Drift Detection**
    Mindship periodically checks screen and camera snapshots (with your permission) to sense wandering attention. When you drift for too long, an AI mentor gently steps in with real-time voice guidance to steer you back on track.
 
+
+
+
+
 5. **Dock and Reflect**
    End each session to receive a concise voyage summary—total focus time, drift incidents, and key notes—then watch your accomplishments appear on an interactive “Inner World Map.”
 
@@ -34,85 +37,111 @@ Let Mindship convert your fleeting thoughts into a purposeful voyage—so every 
 
 **Purpose:** Provide users with an immersive, voice-driven productivity app that helps them set a big-picture goal, break it into actionable tasks, stay focused while working, and reflect on progress—all through an engaging “sailing” metaphor.
 
-**Current status:**
-- 3D animation is integrated, but no function is implemented
+## 1 · Product Overview
 
+**Mindship** is a *voice‑first* productivity app that turns scattered ideas into a focused, game‑like voyage. A refined sailing metaphor guides users to:
 
----
+1. **Chart Your Guiding Star** – declare one motivating, north‑star goal.
+2. **Capture the Wind of Thoughts** – speak ideas; Mindship turns them into an organised, prioritised to‑do list.
+3. **Set Sail in Flow Mode** – launch a “Sailing Session”, work hands‑free, and watch cinematic 3‑D animations mark milestones.
+4. **Stay on Course** – smart drift detection notices distraction; an AI mentor (“Seagull”) offers real‑time voice nudges.
+5. **Dock & Reflect** – finish with a concise voyage summary and a growing **Inner World Map** of accomplishments.
 
-## 1. High-Level Goals
-
-1. **North-Star Goal Setting** – Let the user declare a single overarching objective (“Guiding Star”) that anchors every subsequent action.
-2. **Thought-to-Task Conversion** – Capture spontaneous ideas as speech and convert them into a structured to-do list (“Wind of Thoughts”).
-3. **Daily Sailing Cycle** – Guide users through focused work sessions, passively log their spoken thoughts, and intervene when they drift.
-4. **Adaptive Voice Guidance** – Offer real-time, conversational AI support when sustained distraction is detected.
-5. **Progress Review & Visualization** – Summarize each session, and visually map completed tasks on a personal “Inner World Map.”
-6. **Unified Experience** – Maintain a seamless narrative with cinematic 3-D animations that mark stage transitions.
+> **Why Mindship?**
+> • Hands‑free productivity • Proactive focus coach • Engaging narrative • Data‑driven insight
 
 ---
 
-## 2 Release Scope & Priorities
+## 2 · Release Scope & Priorities
 
-| Phase                       | Core Features (IDs)                                                                                             | Priority              |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------- |
-| **Phase 1 – Launch Prep**   | 1.1 North-Star Goal · 1.2 Thought-to-Task · 1.2.1/1.2.2 task refinement                                         | **MVP 1**             |
-| **Phase 2 – Daily Sailing** | 2.1 Start Session · 2.2 Passive Listening · 2.3 Active Interaction · 2.4 AI Intervention · 2.5 Focus Monitoring | **MVP 1 / MVP 1 max** |
-| **Phase 3 – Reflection**    | 3.1 End Session & Summary · 3.2 Inner World Map                                                                 | **MVP 1**             |
-| **Cross-Cutting**           | 4 API documentation                                                                                             | Continuous            |
-
----
-
-## 2.1  System Architecture
-
-| Layer                      | Responsibilities                                                                                             | Tech / Service                                                          |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
-| **Frontend (Web / React)** | UI, media capture, WebSocket (Supabase Realtime) sessions, client-side VAD, Spline animation triggers        | Vite + React, WebAudio/WebRTC, Supabase JS SDK                          |
-| **Supabase (BaaS)**        | Auth, Postgres DB, Storage (media), Edge Functions (secure 3rd-party calls), Realtime (broadcast / presence) | Supabase Edge Functions (Deno), Row Level Security                      |
-| **External Services**      | 3D animation, STT/LLM, speech synthesis                                                                      | Spline, Whisper (or Azure/ElevenLabs) via Edge Function proxy, Dify API |
+| Phase                       | Core Features (IDs)                                                                                                      | Delivery Window       |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------- |
+| **Phase 1 – Launch Prep**   | 1.1 Guiding Star • 1.2 Wind of Thoughts (inc. 1.2.1/1.2.2 refinement)                                                    | **MVP 1**             |
+| **Phase 2 – Daily Sailing** | 2.1 Start Session • 2.2 Passive Listening • **2.3 Ask Seagull** • **2.4 Deep Drift Intervention** • 2.5 Focus Monitoring | **MVP 1 / MVP 1‑max** |
+| **Phase 3 – Reflection**    | 3.1 End Session & Summary • 3.2 Inner World Map                                                                          | **MVP 1**             |
+| **Cross‑Cutting**           | 4 API documentation                                                                                                      | Continuous            |
 
 ---
 
-## 3  Functional Requirements (MVP)
+## 3 · System Architecture (high‑level)
 
-| ID         | Feature                               | Frontend Duties                                                                                                          | Supabase Duties (Edge / DB)                                                                                                                                 | External Calls    | Priority |
-| ---------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | -------- |
-| **FR-1.1** | **Set “Morning Star”**                | Call `rpc_set_goal()` with `{user_id, goal}`; trigger Spline intro                                                       | **Function:** insert row `goals`                                                                                                                            | Spline webhook    | P1       |
-| **FR-1.2** | **“Wind of Thought” – Voice → Tasks** | Record audio → upload to `storage.audio/` → invoke `edge_process_voice()`; render returned tasks                         | **Function:**<br>1. Download audio.<br>2. STT → text.<br>3. Dify “task decomposition”.<br>4. Insert tasks into `tasks`                                      | Whisper / Dify    | P1       |
-| **FR-2.1** | **Start Sailing Session**             | Request mic/cam/screen; call `rpc_start_session(task_id)`; open Supabase Realtime channel `session:{id}`; trigger Spline | Insert row in `sessions` with status `sailing`; broadcast `{event:"started"}`                                                                               | —                 | P1       |
-| **FR-2.2** | **Passive Listening**                 | Local VAD; on speech → upload audio → `edge_log_speech(session_id)`                                                      | STT → insert transcript into `logs` table                                                                                                                   | Whisper           | P1       |
-| **FR-2.3** | **Active Interaction**                | Stream mic chunks over Realtime channel; handle returned events (`RESUME_SAILING`, etc.)                                 | Edge Function via Realtime listener:<br>• STT → text<br>• Dify intent classification<br>• Update DB & broadcast action                                      | Dify              | P1       |
-| **FR-2.4** | **Deep Drift Intervention**           | Play AI speech from Realtime; continue duplex streaming                                                                  | Edge timer checks drift; when `≥10 min` drifting:<br>• Aggregate context<br>• Open duplex AI chat (Edge ↔ ElevenLabs)<br>• Relay audio chunks over Realtime | ElevenLabs / Dify | P1-max   |
-| **FR-2.5** | **Heartbeat & Drift Detection**       | Periodic screenshot+webcam capture → upload images → `edge_heartbeat(session_id)`                                        | Store metadata; every 60 s Edge job → Dify multimodal focus check; if drifting broadcast `DRIFT` event; write to `drift_events`                             | Dify multimodal   | P1-max   |
-| **FR-3.1** | **End Session & Summary**             | Call `rpc_end_session(session_id)`; close Realtime; display summary                                                      | Compute metrics in SQL (`duration`, `focus%`, `drifts`) and return JSON                                                                                     | —                 | P1       |
-| **FR-3.2** | **Inner World Map**                   | Fetch `select * from sessions where user_id=... order by start_time` and draw path                                       | Read-only SQL view; PostGIS optional for path geom                                                                                                          | —                 | P1       |
-| **FR-4.0** | **API Docs**                          | n/a                                                                                                                      | Edge auto-generate OpenAPI (Supabase CLI)                                                                                                                   | —                 | P2       |
+| Layer                      | Responsibilities                                                                                                  | Tech / Service                                                 |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| **Frontend (Web / React)** | UI, media capture, **Web Speech API** (continuous & single‑turn STT), client‑side VAD, WebSocket, Spline triggers | Vite + React, WebAudio/WebRTC, Web Speech API, Supabase JS SDK |
+| **Supabase (BaaS)**        | Auth, Postgres, Storage, Realtime, Edge Functions (proxy to 3rd‑party APIs)                                       | Supabase Edge Functions (Deno / TS)                            |
+| **External Services**      | 3‑D animation, LLM, TTS                                                                                           | Spline, **Dify** (LLM orchestration), **ElevenLabs** (TTS)     |
 
-> *All Edge Functions are written in Deno (TS) and deployed via `supabase functions deploy`.*
----
-
-## 4. Non-Functional & Experience Requirements
-
-1. **Seamless Voice UX** – Speech capture and playback must feel instantaneous and hands-free.
-2. **Engaging 3-D Narrative** – Major state changes (start, drift, end) must trigger matching animations for visual continuity.
-3. **Privacy & Consent** – Users grant explicit permission for microphone, camera, and screen recording; data is scoped per session.
-4. **Reliability** – WebSocket connection should gracefully reconnect; background logging must not interrupt the user journey.
-5. **Extensibility** – APIs must be fully documented to enable future integrations or automation.
+*Speech‑to‑text now runs **entirely in‑browser** via the Web Speech API.*
 
 ---
 
-## 6. External Systems & Interfaces
+## 4 · Functional Requirements (MVP 1)
 
-* **3-D Animation Engine** – Receives simple webhooks to play scene-specific animations. (already integrated)
-* **Speech-to-Text Service** – Converts short audio chunks and full streams to text.
-* **Large-Language Model** – Performs task extraction, intent classification, conversation generation, and focus assessment.
-* **Text-to-Speech Service** – Streams AI voice responses back to the client.
-  *(No technical implementation details are included in this document.)*
+| ID         | Feature                                           | Front‑End Duties                                                                                                                                   | Supabase Edge / DB Duties                                                                                                                                                         | External Calls    | Priority   |
+| ---------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ---------- |
+| **FR‑1.1** | **Set “Guiding Star”**                            | Form → `rpc_set_goal()`; fire Spline intro                                                                                                         | Insert into `goals` table                                                                                                                                                         | Spline webhook    | P1         |
+| **FR‑1.2** | **Wind of Thoughts – Speech → Tasks**             | Use **Web Speech API** continuous mode to capture text; on recognition result → `edge_process_thoughts({text})`; show returned tasks               | Call **Dify** “task decomposition” with the text; insert tasks into `tasks`                                                                                                       | Dify              | P1         |
+| **FR‑2.1** | **Start Sailing Session**                         | Request mic/cam; `rpc_start_session()`; open Realtime channel; trigger animation                                                                   | Insert `sessions` row; broadcast `"started"`                                                                                                                                      | —                 | P1         |
+| **FR‑2.2** | **Passive Listening**                             | Web Speech API continuous transcription; whenever interim/final text appears → `edge_log_speech({session_id,text})`                                | Store transcript in `logs`                                                                                                                                                        | —                 | P1         |
+| **FR‑2.3** | **Ask Seagull – On‑Demand Voice Chat**            | On tap **“Ask Seagull”**: use Web Speech API single‑shot recognition → send text to `edge_ask_seagull({session_id,text})`; play streamed TTS reply | 1. Send text + context to **Dify** chat endpoint<br>2. Receive reply (string)<br>3. **ElevenLabs TTS** → audio stream → broadcast to client<br>4. Log Q\&A in `interaction_logs`  | Dify → ElevenLabs | **P1**     |
+| **FR‑2.4** | **Deep Drift Intervention – AI Voice Engagement** | Autoplay TTS coaching; if user responds, fall back to FR‑2.3 flow                                                                                  | **Trigger:** backend detects **≥ 5 min continuous drift**.<br>1. Compile context summary<br>2. Dify generates gentle nudge<br>3. ElevenLabs TTS; broadcast `DRIFT_COACHING` event | Dify → ElevenLabs | **P1‑max** |
+| **FR‑2.5** | **Heartbeat & Focus Monitoring**                  | Periodic screenshots/webcam frames → `edge_heartbeat()`                                                                                            | Store metadata; 60 s job computes drift score; if drifting broadcast `DRIFT`                                                                                                      | Dify multimodal   | P1‑max     |
+| **FR‑3.1** | **End Session & Summary**                         | `rpc_end_session()`; close channel; display summary                                                                                                | SQL metrics (`duration`, `focus%`, `drifts`) → JSON                                                                                                                               | —                 | P1         |
+| **FR‑3.2** | **Inner World Map**                               | Fetch sessions & render map                                                                                                                        | Read‑only view; optional PostGIS                                                                                                                                                  | —                 | P1         |
+| **FR‑4.0** | **API Docs**                                      | –                                                                                                                                                  | Auto‑generate OpenAPI via Supabase CLI                                                                                                                                            | —                 | P2         |
+
+### FR‑2.4 User Story
+
+> “If I’m distracted for too long, I want my AI buddy **‘Seagull’** to start a gentle, non‑judgmental conversation that reminds me of my goal and guides me back on track.”
+
+*Trigger condition:* continuous drift **≥ 5 minutes** (detected by FR‑2.5 engine).
 
 ---
 
-## 7. Acceptance Criteria (Snapshot)
+## 5 · Non‑Functional & Experience Requirements
 
-For each feature ID, the user must be able to complete the action in one uninterrupted flow and observe a confirmatory visual or textual response that matches the narrative. Metrics such as session creation, task count, drift detection, and summary accuracy must log correctly in the database for audit.
+1. **Instant Voice UX** – Browser STT must yield interim text < 300 ms after speech; overall Ask Seagull mic‑to‑reply ≤ 2.5 s.
+2. **Cinematic Continuity** – each stage transition triggers the correct Spline animation.
+3. **Privacy & Consent** – explicit permissions for mic/cam/screen; all raw audio stays on‑device.
+4. **Reliability** – WebSocket auto‑reconnect; transcripts buffered locally if offline.
+5. **Extensibility** – Edge Functions expose REST definitions for third‑party integrations.
+
+---
+
+## 6 · External Interfaces
+
+| Service            | Purpose                   | Notes                                                           |
+| ------------------ | ------------------------- | --------------------------------------------------------------- |
+| **Web Speech API** | In‑browser speech‑to‑text | Continuous & single‑turn modes; offline fallback not guaranteed |
+| **Spline**         | 3‑D scene playback        | Webhook endpoint integrated                                     |
+| **Dify**           | LLM orchestration         | Task extraction, chat, multimodal drift check                   |
+| **ElevenLabs**     | Text‑to‑speech            | Streams 16‑kHz PCM over HTTP2                                   |
+
+---
+
+## 7 · Acceptance Criteria
+
+| Feature ID | Key KPI                  | Pass Condition                                |
+| ---------- | ------------------------ | --------------------------------------------- |
+| FR‑1.1     | Goal saved               | `goals` row exists; Spline intro plays        |
+| FR‑1.2     | Task extraction accuracy | ≥ 90 % of test ideas correctly parsed         |
+| FR‑2.3     | Ask Seagull latency      | User hears reply < 2.5 s after tap            |
+| FR‑2.4     | Intervention timing      | Coaching triggers within 10 s of 5‑min drift  |
+| FR‑2.5     | Drift detection          | False‑positive rate < 5 % on test video       |
+| FR‑3.1     | Summary accuracy         | Reported focus% within ±3 % of ground truth   |
+| FR‑3.2     | Map update               | Completed sessions appear within 1 s of fetch |
+
+---
+
+## 8 · Glossary
+
+| Term               | Meaning                                                     |
+| ------------------ | ----------------------------------------------------------- |
+| **Guiding Star**   | User’s single, overarching goal                             |
+| **Seagull**        | The conversational AI persona                               |
+| **Drift**          | Period where user is off‑task, detected via multimodal cues |
+| **Edge Function**  | Supabase serverless function (Deno)                         |
+| **Web Speech API** | Browser API providing on‑device or cloud STT                |
 
 ---
 
