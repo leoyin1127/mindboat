@@ -77,8 +77,8 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
             playsInline
             className="w-full h-full object-cover"
             style={{ 
-              width: type === 'camera' ? '240px' : '320px',
-              height: type === 'camera' ? '180px' : '240px'
+              width: '240px',
+              height: '180px'
             }}
           />
           
