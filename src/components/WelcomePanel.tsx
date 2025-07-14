@@ -182,9 +182,25 @@ export const WelcomePanel: React.FC<WelcomePanelProps> = ({
       // Request microphone permissions explicitly
       try {
         await navigator.mediaDevices.getUserMedia({ audio: true });
-      } catch (permissionError) {
-        console.error('Microphone permission denied:', permissionError);
-        handleError('speech', 'Microphone access denied. Please allow microphone access and try again.', true);
+      } catch (error) {
+        console.error('Microphone error:', error);
+        
+        // Handle different types of media errors
+        if (error instanceof DOMException) {
+          if (error.name === 'NotAllowedError') {
+            handleError('speech', 'Microphone access denied. Please allow microphone access and try again.', true);
+          } else if (error.name === 'NotReadableError') {
+            handleError('speech', 'Microphone is not available. Please ensure no other applications are using your microphone and try again.', true);
+          } else if (error.name === 'NotFoundError') {
+            handleError('speech', 'No microphone found. Please check that your microphone is connected and try again.', true);
+          } else if (error.name === 'AbortError') {
+            handleError('speech', 'Microphone request was cancelled. Please try again.', true);
+          } else {
+            handleError('speech', `Microphone error: ${error.message || 'Unknown audio system error'}. Please try again.`, true);
+          }
+        } else {
+          handleError('speech', 'Microphone error: Unable to access microphone. Please try again.', true);
+        }
         return;
       }
 
