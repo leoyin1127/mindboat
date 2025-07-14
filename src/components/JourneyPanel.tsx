@@ -581,8 +581,22 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       video.muted = true;
       await video.play();
       
-      // Wait for first frame to be ready
-      await new Promise(resolve => video.onloadedmetadata = resolve);
+      // Wait for metadata (dimensions) – if the event fired before we attached the
+      // handler, or it never comes, fall back after 1s so the Promise resolves
+      await new Promise((resolve) => {
+        if (video.readyState >= 1) { // HAVE_METADATA already available
+          resolve(null)
+          return
+        }
+        const timeout = setTimeout(() => {
+          console.warn('⏱️ DEBUG: loadedmetadata timeout (1s) – dimensions:', video.videoWidth, 'x', video.videoHeight)
+          resolve(null)
+        }, 1000)
+        video.onloadedmetadata = () => {
+          clearTimeout(timeout)
+          resolve(null)
+        }
+      })
       console.log('🖥️ DEBUG: Screen dimensions:', video.videoWidth, 'x', video.videoHeight);
 
       // Compress screen capture to reasonable size (960x540) to reduce payload
