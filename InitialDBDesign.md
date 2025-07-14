@@ -165,18 +165,25 @@ CREATE INDEX idx_session_events_type ON session_events(event_type, created_at DE
 
 ```sql
 -- Drift events (simplified)
+DROP TABLE IF EXISTS drift_events;
 CREATE TABLE drift_events (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     session_id UUID NOT NULL REFERENCES sailing_sessions(id) ON DELETE CASCADE,
-    started_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    ended_at TIMESTAMPTZ,
-    severity drift_severity DEFAULT 'minor',
-    trigger_ai_intervention BOOLEAN DEFAULT false,
-    intervention_result JSONB, -- AI response, user action, etc.
-    screenshot_id UUID REFERENCES media_files(id)
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, -- For RLS and indexing
+    
+    -- Core focus data from Dify
+    is_drifting BOOLEAN NOT NULL,
+    drift_reason TEXT,
+    actual_task TEXT,
+    user_mood TEXT,
+    mood_reason TEXT,
+    
+    -- For the deep drift intervention logic
+    intervention_triggered BOOLEAN DEFAULT false,
+    
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
-
-CREATE INDEX idx_drift_events_session ON drift_events(session_id, started_at);
+CREATE INDEX idx_drift_events_session_time ON drift_events(session_id, created_at DESC);
 
 -- AI conversations
 CREATE TABLE ai_conversations (

@@ -1,0 +1,128 @@
+---
+alwaysApply: true
+---
+# Project Context: Mindboat Application
+
+## High-Level Overview
+Mindboat is a modern, single-page web application built with React, Vite, and TypeScript. It features a highly stylized user interface with "glass morphism" and ocean theme, leveraging the Spline platform for interactive 3D experiences. The backend is powered by Supabase with serverless functions for webhooks, voice processing, and AI-generated summaries.
+
+**Core Concept**: A metaphorical "journey" or "voyage" platform for personal goal setting and reflection.
+
+## Project Structure
+
+```
+mindboat/
+├── src/                    # Frontend React application source code
+├── supabase/functions/     # Serverless backend functions
+├── public/                 # Static assets (images, 3D models)
+├── dist/                   # Production build output
+├── vite.config.ts         # Vite configuration
+├── tailwind.config.js     # Tailwind CSS configuration
+└── tsconfig.json          # TypeScript configuration
+```
+
+## Frontend Architecture (`mindboat/src`)
+
+### Entry Points
+- **index.html**: Main HTML page
+- **main.tsx**: React application entry point
+- **App.tsx**: Root component orchestrating the entire user experience, managing state and 3D scene events
+
+### Component Categories
+
+#### 3D Interaction Components
+- **SplineScene.tsx**: Renders the main 3D scene from Spline
+- **SplineEventHandler.tsx**: Bridge between Spline 3D scene and React app
+  - Listens for Spline events (clicks, interactions)
+  - Translates 3D interactions into app actions (modals, backend calls)
+
+#### User Flow & Panel Components
+- **WelcomePanel.tsx & WelcomeModal.tsx**: Initial user onboarding with voice recording
+- **LifeGoalsModal.tsx**: User input interface for life goals (core feature)
+- **JourneyPanel.tsx**: Main dashboard showing tasks, progress, and voyage controls
+- **ControlPanel.tsx**: Voyage controls (microphone/video toggles, end voyage)
+- **SailingSummaryPanel.tsx**: Post-voyage summary with generated images and text
+
+#### Interactive Guidance
+- **SeagullPanel.tsx**: AI assistant/guide component
+  - Voice interaction capabilities
+  - Message display and response system
+  - Audio recording and processing integration
+
+#### UI Utilities
+- **AnimatedText.tsx**: Text animation effects for polished UI
+
+### Styling System (`mindboat/src/styles`)
+- **Framework**: Tailwind CSS (utility-first)
+- **Design System**: Glass morphism with ocean theme
+- **designSystem.ts**: Helper functions for consistent styling
+  - `getButtonStyle()`: Standardized button appearances
+  - `getPanelStyle()`: Consistent panel styling
+- **Theme Elements**: Translucent panels, blue gradients, ocean aesthetics
+
+### Libraries (`mindboat/src/lib`)
+- **supabase.ts**: Supabase client initialization for backend communication
+
+## Backend Architecture (`mindboat/supabase/functions`)
+
+### Webhook Functions
+All webhook handlers for frontend interactions:
+
+- **goals-webhook**: Processes life goal submissions
+- **journey-webhook**: Handles journey/voyage state changes
+- **seagull-webhook**: Manages Seagull assistant interactions
+- **spline-webhook**: Handles 3D scene interactions
+- **welcome-webhook**: Processes welcome/onboarding events
+
+### Service Functions
+- **spline-proxy**: Secure intermediary for Spline API communications
+  - Protects API keys
+  - Handles complex Spline service interactions
+
+- **voice-interaction**: Core Seagull feature backend
+  - Receives audio chunks from frontend
+  - Speech-to-text processing
+  - AI model integration for responses
+  - Returns processed audio responses
+
+- **sailing-summary**: Post-voyage processing
+  - Triggered when user ends voyage
+  - AI-generated text summaries
+  - AI-generated accompanying images
+  - Data preparation for SailingSummaryPanel
+
+### Testing
+- **test-seagull-webhook**: Dedicated testing function for Seagull logic
+
+## Key Technical Patterns
+
+### Data Flow
+1. **3D Interaction**: Spline → SplineEventHandler → React State → Backend Webhooks
+2. **Voice Processing**: Frontend Recording → voice-interaction function → AI Processing → Response
+3. **Journey Management**: User Actions → Journey/Control Panels → Backend State → Database
+
+### State Management
+- Centralized in App.tsx
+- Panel visibility and modal states
+- 3D scene event coordination
+- Backend communication orchestration
+
+### AI Integration Points
+- Voice-to-text processing in Seagull interactions
+- AI-generated voyage summaries
+- AI-generated summary images
+- Potentially AI-driven goal recommendations
+
+### API_Key Format
+VITE_SUPABASE_ANON_KEY=your_anon_key
+VITE_SUPABASE_URL=your_url
+VITE_GEMINI_API_KEY=your_gemini_key
+API_KEY=your_dify_api_key
+DIFY_API_URL=your_dify_url
+
+## Development Notes
+- **Frontend**: React + Vite + TypeScript stack
+- **Backend**: Supabase serverless functions
+- **3D**: Spline platform integration
+- **Styling**: Tailwind CSS with custom design system
+- **Architecture**: Event-driven with webhook-based backend communication

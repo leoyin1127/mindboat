@@ -3,6 +3,8 @@ import { Compass, CheckCircle, Circle, Mail as Sail, Mountain, BookOpen, Palette
 import { ControlPanel } from './ControlPanel';
 import { SailingSummaryPanel } from './SailingSummaryPanel';
 import { PermissionPanel } from './PermissionPanel';
+import { VideoPreview } from './VideoPreview';
+import { SeagullPanel } from './SeagullPanel';
 import { auth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 
@@ -81,6 +83,8 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   const [summaryData, setSummaryData] = useState<SailingSummaryData | undefined>(undefined);
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
   const [showPermissionPanel, setShowPermissionPanel] = useState(false);
+  const [showSeagullPanel, setShowSeagullPanel] = useState(false);
+  const [seagullMessage, setSeagullMessage] = useState<string>('');
 
   // Sailing session state
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -92,6 +96,28 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
 
   // Realtime channel reference
   const realtimeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+
+  // Media state management
+  const [isVideoOn, setIsVideoOn] = useState(false);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [isMicMuted, setIsMicMuted] = useState(false);
+  
+  // Media stream references
+  const [videoStream, setVideoStream] = useState<MediaStream | null>(null);
+  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
+  const [micStream, setMicStream] = useState<MediaStream | null>(null);
+  
+  // Refs to avoid stale closures in heartbeat callbacks
+  const videoStreamRef = useRef<MediaStream | null>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
+  
+  // Refs for video elements
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const screenRef = useRef<HTMLVideoElement | null>(null);
+
+  // Heartbeat system for distraction detection
+  const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [isHeartbeatActive, setIsHeartbeatActive] = useState(false);
 
   // Drag and drop state
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
@@ -200,10 +226,12 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
     }
   };
 
-  // Cleanup Realtime channel on component unmount
+  // Cleanup Realtime channel, media streams, and heartbeat on component unmount
   useEffect(() => {
     return () => {
       cleanupRealtimeChannel();
+      cleanupMediaStreams();
+      stopHeartbeat();
     };
   }, []);
 
@@ -315,6 +343,404 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
     }
   };
 
+  // Media handling functions
+  const toggleVideo = async () => {
+    try {
+      if (isVideoOn && videoStream) {
+        // Turn off video
+        videoStream.getTracks().forEach(track => track.stop());
+        setVideoStream(null);
+        videoStreamRef.current = null;
+        setIsVideoOn(false);
+        if (videoRef.current) {
+          videoRef.current.srcObject = null;
+        }
+        console.log('Video turned off');
+      } else {
+        // Turn on video
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            width: { ideal: 1280 }, 
+            height: { ideal: 720 } 
+          } 
+        });
+        setVideoStream(stream);
+        videoStreamRef.current = stream;
+        setIsVideoOn(true);
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+        console.log('Video turned on');
+      }
+    } catch (error) {
+      console.error('Error toggling video:', error);
+      setSessionError('Failed to access camera. Please check permissions.');
+    }
+  };
+
+  const toggleScreenShare = async () => {
+    try {
+      if (isScreenSharing && screenStream) {
+        // Stop screen sharing
+        screenStream.getTracks().forEach(track => track.stop());
+        setScreenStream(null);
+        screenStreamRef.current = null;
+        setIsScreenSharing(false);
+        if (screenRef.current) {
+          screenRef.current.srcObject = null;
+        }
+        console.log('Screen sharing stopped');
+      } else {
+        // Start screen sharing
+        const stream = await navigator.mediaDevices.getDisplayMedia({ 
+          video: true, 
+          audio: true 
+        });
+        setScreenStream(stream);
+        screenStreamRef.current = stream;
+        setIsScreenSharing(true);
+        if (screenRef.current) {
+          screenRef.current.srcObject = stream;
+        }
+        
+        // Handle when user stops sharing via browser UI
+        stream.getVideoTracks()[0].addEventListener('ended', () => {
+          setScreenStream(null);
+          screenStreamRef.current = null;
+          setIsScreenSharing(false);
+          if (screenRef.current) {
+            screenRef.current.srcObject = null;
+          }
+        });
+        
+        console.log('Screen sharing started');
+      }
+    } catch (error) {
+      console.error('Error toggling screen share:', error);
+      setSessionError('Failed to start screen sharing. Please check permissions.');
+    }
+  };
+
+  const toggleMic = async () => {
+    try {
+      if (!micStream) {
+        // Request microphone access if not already available
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        setMicStream(stream);
+        setIsMicMuted(false);
+        console.log('Microphone access granted');
+      } else {
+        // Toggle mute state
+        const audioTrack = micStream.getAudioTracks()[0];
+        if (audioTrack) {
+          audioTrack.enabled = isMicMuted;
+          setIsMicMuted(!isMicMuted);
+          console.log('Microphone', isMicMuted ? 'unmuted' : 'muted');
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling microphone:', error);
+      setSessionError('Failed to access microphone. Please check permissions.');
+    }
+  };
+
+  // Cleanup all media streams
+  const cleanupMediaStreams = () => {
+    if (videoStream) {
+      videoStream.getTracks().forEach(track => track.stop());
+      setVideoStream(null);
+      videoStreamRef.current = null;
+      setIsVideoOn(false);
+    }
+    if (screenStream) {
+      screenStream.getTracks().forEach(track => track.stop());
+      setScreenStream(null);
+      screenStreamRef.current = null;
+      setIsScreenSharing(false);
+    }
+    if (micStream) {
+      micStream.getTracks().forEach(track => track.stop());
+      setMicStream(null);
+      setIsMicMuted(false);
+    }
+    console.log('All media streams cleaned up');
+  };
+
+  // Image capture utilities for heartbeat system
+  const captureCameraFrame = async (): Promise<Blob | null> => {
+    const stream = videoStreamRef.current;
+    if (!stream) {
+      console.warn('No video stream available for camera capture');
+      return null;
+    }
+
+    try {
+      console.log('🎥 DEBUG: Starting camera capture...');
+      const tracks = stream.getVideoTracks();
+      console.log('🎥 DEBUG: Video tracks:', tracks.length, tracks[0]?.readyState);
+      
+      const canvas = document.createElement('canvas');
+      const video = document.createElement('video');
+      
+      // Set up video element
+      video.srcObject = stream;
+      video.muted = true;
+      video.setAttribute('playsinline', 'true');
+
+      // Log any immediate errors on the <video> element
+      video.addEventListener('error', (ev) => {
+        console.error('🎥 DEBUG: <video> element error', ev);
+      });
+
+      // Attempt to play the video – catch promise rejection explicitly
+      try {
+        await video.play();
+        console.log('🎥 DEBUG: video.play() resolved');
+      } catch (playErr) {
+        console.error('❌ DEBUG: video.play() rejected', playErr);
+        throw playErr;
+      }
+
+      // Wait for first frame to be ready (loadedmetadata)
+      let metadataResolved = false;
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          if (!metadataResolved) {
+            console.warn('⏱️ DEBUG: loadedmetadata timeout (1s) – dimensions:', video.videoWidth, 'x', video.videoHeight);
+            resolve(null);
+          }
+        }, 1000);
+        video.onloadedmetadata = () => {
+          metadataResolved = true;
+          clearTimeout(timeout);
+          resolve(null);
+        };
+      });
+       
+      // Wait for first frame to be ready
+      console.log('🎥 DEBUG: Video dimensions after metadata/timeout:', video.videoWidth, 'x', video.videoHeight);
+
+      // Compress to reasonable size (640x360) to reduce payload
+      const targetWidth = 640;
+      const targetHeight = 360;
+      const sourceWidth = video.videoWidth || 640;
+      const sourceHeight = video.videoHeight || 480;
+      
+      // Calculate aspect ratio preserving dimensions
+      const aspectRatio = sourceWidth / sourceHeight;
+      let finalWidth = targetWidth;
+      let finalHeight = targetHeight;
+      
+      if (aspectRatio > (targetWidth / targetHeight)) {
+        finalHeight = targetWidth / aspectRatio;
+      } else {
+        finalWidth = targetHeight * aspectRatio;
+      }
+
+      canvas.width = finalWidth;
+      canvas.height = finalHeight;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        throw new Error('Could not get canvas context');
+      }
+
+      // Draw video frame to canvas with compression
+      ctx.drawImage(video, 0, 0, finalWidth, finalHeight);
+
+      // Convert to blob with higher compression (0.65 quality)
+      return new Promise((resolve) => {
+        canvas.toBlob((blob) => {
+          console.log('🎥 DEBUG: Camera blob created:', blob ? `${(blob.size / 1024).toFixed(1)}KB` : 'NULL');
+          resolve(blob);
+        }, 'image/jpeg', 0.65);
+      });
+    } catch (error) {
+      console.error('❌ Error capturing camera frame:', error);
+      return null;
+    }
+  };
+
+  const captureScreenFrame = async (): Promise<Blob | null> => {
+    const stream = screenStreamRef.current;
+    if (!stream) {
+      console.warn('No screen stream available for screen capture');
+      return null;
+    }
+
+    try {
+      console.log('🖥️ DEBUG: Starting screen capture...');
+      const tracks = stream.getVideoTracks();
+      console.log('🖥️ DEBUG: Screen tracks:', tracks.length, tracks[0]?.readyState);
+      
+      const canvas = document.createElement('canvas');
+      const video = document.createElement('video');
+      
+      // Set up video element
+      video.srcObject = stream;
+      video.muted = true;
+      await video.play();
+      
+      // Wait for metadata (dimensions) – if the event fired before we attached the
+      // handler, or it never comes, fall back after 1s so the Promise resolves
+      await new Promise((resolve) => {
+        if (video.readyState >= 1) { // HAVE_METADATA already available
+          resolve(null)
+          return
+        }
+        const timeout = setTimeout(() => {
+          console.warn('⏱️ DEBUG: loadedmetadata timeout (1s) – dimensions:', video.videoWidth, 'x', video.videoHeight)
+          resolve(null)
+        }, 1000)
+        video.onloadedmetadata = () => {
+          clearTimeout(timeout)
+          resolve(null)
+        }
+      })
+      console.log('🖥️ DEBUG: Screen dimensions:', video.videoWidth, 'x', video.videoHeight);
+
+      // Compress screen capture to reasonable size (960x540) to reduce payload
+      const targetWidth = 960;
+      const targetHeight = 540;
+      const sourceWidth = video.videoWidth || 1280;
+      const sourceHeight = video.videoHeight || 720;
+      
+      // Calculate aspect ratio preserving dimensions
+      const aspectRatio = sourceWidth / sourceHeight;
+      let finalWidth = targetWidth;
+      let finalHeight = targetHeight;
+      
+      if (aspectRatio > (targetWidth / targetHeight)) {
+        finalHeight = targetWidth / aspectRatio;
+      } else {
+        finalWidth = targetHeight * aspectRatio;
+      }
+
+      canvas.width = finalWidth;
+      canvas.height = finalHeight;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        throw new Error('Could not get canvas context');
+      }
+
+      // Draw video frame to canvas with compression
+      ctx.drawImage(video, 0, 0, finalWidth, finalHeight);
+
+      // Convert to blob with higher compression (0.65 quality)
+      return new Promise((resolve) => {
+        canvas.toBlob((blob) => {
+          console.log('🖥️ DEBUG: Screen blob created:', blob ? `${(blob.size / 1024).toFixed(1)}KB` : 'NULL');
+          resolve(blob);
+        }, 'image/jpeg', 0.65);
+      });
+    } catch (error) {
+      console.error('❌ Error capturing screen frame:', error);
+      return null;
+    }
+  };
+
+  // Heartbeat function - sends periodic focus check to backend
+  // Helper function to convert blob to base64
+  function blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onloadend = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(blob)
+    })
+  }
+
+  const sendHeartbeat = async (sessionId: string, isActive: boolean) => {
+    if (!sessionId || !isActive) {
+      console.log('Invalid session parameters for heartbeat:', { sessionId, isActive });
+      return;
+    }
+
+    console.log('📊 Sending heartbeat for session:', sessionId);
+
+    try {
+      // Capture images from active streams
+      console.log('📸 DEBUG: Starting capture process...');
+      const [cameraBlob, screenBlob] = await Promise.all([
+        captureCameraFrame(),
+        captureScreenFrame()
+      ]);
+
+      console.log('📸 DEBUG: Capture results:', {
+        camera: cameraBlob ? `${(cameraBlob.size / 1024).toFixed(1)}KB` : 'NULL',
+        screen: screenBlob ? `${(screenBlob.size / 1024).toFixed(1)}KB` : 'NULL'
+      });
+
+      // Skip heartbeat if no images captured
+      if (!cameraBlob && !screenBlob) {
+        console.warn('⚠️ Heartbeat skipped: No media to send.')
+        return;
+      }
+
+      // Convert blobs to base64 strings
+      const cameraImageBase64 = cameraBlob ? await blobToBase64(cameraBlob) : null
+      const screenImageBase64 = screenBlob ? await blobToBase64(screenBlob) : null
+
+      console.log('📸 DEBUG: Base64 conversion:', {
+        camera: cameraImageBase64 ? `${cameraImageBase64.slice(0, 50)}...` : 'NULL',
+        screen: screenImageBase64 ? `${screenImageBase64.slice(0, 50)}...` : 'NULL'
+      });
+
+      // Invoke the backend function with the new payload
+      const { data, error } = await supabase.functions.invoke('session-heartbeat', {
+        body: { 
+          sessionId: sessionId, 
+          cameraImage: cameraImageBase64,
+          screenImage: screenImageBase64 
+        },
+      });
+
+      if (error) {
+        console.error('❌ Heartbeat failed:', error);
+        return;
+      }
+
+      console.log('✅ Heartbeat sent successfully:', data);
+      
+      // Log drift status for debugging
+      if (data.is_drifting) {
+        console.warn('🚨 Drift detected:', data.drift_reason);
+      } else {
+        console.log('✨ User focused:', data.actual_task);
+      }
+    } catch (error) {
+      console.error('❌ Error sending heartbeat:', error);
+    }
+  };
+
+  // Start heartbeat monitoring
+  const startHeartbeat = (sessionId: string, isActive: boolean) => {
+    if (heartbeatIntervalRef.current) {
+      console.log('Heartbeat already active');
+      return;
+    }
+
+    console.log('🔄 Starting heartbeat monitoring (60s intervals) for session:', sessionId);
+    setIsHeartbeatActive(true);
+    
+    // Send first heartbeat after longer delay to ensure streams are ready
+    setTimeout(() => sendHeartbeat(sessionId, isActive), 8000); // Wait 8 seconds for streams to stabilize
+    
+    // Then send every 60 seconds
+    heartbeatIntervalRef.current = setInterval(() => sendHeartbeat(sessionId, isActive), 60000);
+  };
+
+  // Stop heartbeat monitoring
+  const stopHeartbeat = () => {
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+      setIsHeartbeatActive(false);
+      console.log('⏹️ Heartbeat monitoring stopped');
+    }
+  };
+
   // Setup Realtime channel for session
   const setupRealtimeChannel = (sessionId: string) => {
     if (realtimeChannelRef.current) {
@@ -332,6 +758,18 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
         console.log('Session ended remotely:', payload);
         setIsSessionActive(false);
         setCurrentSessionId(null);
+      })
+      .on('broadcast', { event: 'deep_drift_detected' }, (payload) => {
+        console.log('🚨 Deep drift detected, triggering AI intervention:', payload);
+        
+        // Trigger SeagullPanel with intervention message
+        const interventionMessage = payload.payload?.message || 
+          `Captain, I've noticed you've been drifting for ${payload.payload?.consecutive_drifts || 5} minutes. Let's get back on course together.`;
+        
+        setSeagullMessage(interventionMessage);
+        setShowSeagullPanel(true);
+        
+        console.log('🦅 Seagull intervention activated');
       })
       .subscribe((status) => {
         console.log('Realtime channel status:', status);
@@ -402,15 +840,53 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       // Step 2: Setup Realtime channel
       setupRealtimeChannel(sessionId);
 
-      // Step 3: Trigger Spline animation
+      // Step 3: Initialize microphone stream for session
+      try {
+        const microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        setMicStream(microphoneStream);
+        setIsMicMuted(false);
+        console.log('Microphone initialized for session');
+      } catch (micError) {
+        console.warn('Could not initialize microphone for session:', micError);
+        // Continue with session even if microphone fails
+      }
+
+      // Step 3.5: Initialize camera stream for heartbeat monitoring
+      if (!isVideoOn && !videoStream) {
+        try {
+          console.log('Initializing camera for heartbeat monitoring...');
+          await toggleVideo();
+          console.log('Camera initialized for session');
+        } catch (cameraError) {
+          console.warn('Could not initialize camera for session:', cameraError);
+          // Continue with session even if camera fails
+        }
+      }
+
+      // Step 3.6: Initialize screen sharing for heartbeat monitoring
+      if (!isScreenSharing && !screenStream) {
+        try {
+          console.log('Initializing screen sharing for heartbeat monitoring...');
+          await toggleScreenShare();
+          console.log('Screen sharing initialized for session');
+        } catch (screenError) {
+          console.warn('Could not initialize screen sharing for session:', screenError);
+          // Continue with session even if screen sharing fails
+        }
+      }
+
+      // Step 4: Trigger Spline animation
       await triggerSplineSessionAnimation('start');
 
-      // Step 4: Update session state
+      // Step 5: Update session state
       setCurrentSessionId(sessionId);
       setIsSessionActive(true);
       setSessionStartTime(new Date());
 
-      // Step 5: Show control panel and hide journey panel
+      // Step 6: Start heartbeat monitoring for distraction detection
+      startHeartbeat(sessionId, true);
+
+      // Step 7: Show control panel and hide journey panel
       setShowControlPanel(true);
       onClose?.();
 
@@ -496,8 +972,10 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       // Step 2: Trigger Spline animation
       await triggerSplineSessionAnimation('end');
 
-      // Step 3: Clean up Realtime channel
+      // Step 3: Clean up Realtime channel, media streams, and heartbeat
       cleanupRealtimeChannel();
+      cleanupMediaStreams();
+      stopHeartbeat();
 
       // Step 4: Generate AI summary
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sailing-summary`, {
@@ -914,6 +1392,12 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
         onEndVoyage={handleEndVoyage}
         sessionId={currentSessionId}
         isSessionActive={isSessionActive}
+        isMicMuted={isMicMuted}
+        isVideoOn={isVideoOn}
+        isScreenSharing={isScreenSharing}
+        onToggleMic={toggleMic}
+        onToggleVideo={toggleVideo}
+        onToggleScreenShare={toggleScreenShare}
       />
 
       {/* Sailing Summary Panel - full screen modal */}
@@ -937,6 +1421,34 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
           }
         }}
         onPermissionsGranted={handlePermissionsGranted}
+      />
+
+      {/* Video Preview - Camera */}
+      <VideoPreview
+        stream={videoStream}
+        type="camera"
+        isVisible={isVideoOn}
+        onClose={toggleVideo}
+        className="top-4 right-4"
+      />
+
+      {/* Video Preview - Screen Share */}
+      <VideoPreview
+        stream={screenStream}
+        type="screen"
+        isVisible={isScreenSharing}
+        onClose={toggleScreenShare}
+        className="top-4 left-4"
+      />
+
+      {/* Seagull Panel - AI Intervention for Deep Drift */}
+      <SeagullPanel
+        isVisible={showSeagullPanel}
+        onClose={() => {
+          setShowSeagullPanel(false);
+          setSeagullMessage('');
+        }}
+        message={seagullMessage}
       />
     </>
   );
