@@ -2,6 +2,8 @@ import React from 'react';
 import { SplineScene } from './components/SplineScene';
 import { SplineEventHandler } from './components/SplineEventHandler';
 import { auth, type AnonymousUser } from './lib/auth';
+import { StagewiseToolbar } from '@stagewise/toolbar-react';
+import ReactPlugin from '@stagewise-plugins/react';
 
 function App() {
   const [isModalOpen, setIsModalOpen] = React.useState(false);
@@ -91,6 +93,13 @@ function App() {
   // Show main app once authentication is successful
   return (
     <div className="relative h-screen">
+      {/* Stagewise Toolbar - only in development */}
+      <StagewiseToolbar
+        config={{
+          plugins: [ReactPlugin],
+        }}
+      />
+
       {/* Authentication Debug Info (only in development) */}
       {import.meta.env.DEV && currentUser && (
         <div className="fixed top-4 left-4 z-50 bg-black/80 text-white p-3 rounded-lg text-xs font-mono">
