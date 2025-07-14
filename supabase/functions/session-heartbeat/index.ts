@@ -24,6 +24,35 @@ interface SessionHeartbeatResponse {
   message: string;
 }
 
+// Helper function to upload a single image to Dify
+async function uploadImageToDify(base64Image: string, userId: string): Promise<string> {
+  const DIFY_API_KEY = Deno.env.get('DIFY_API_KEY')!
+  const DIFY_API_URL = Deno.env.get('DIFY_API_URL')!
+
+  // Convert base64 data URI to a Blob
+  const fetchRes = await fetch(base64Image)
+  const blob = await fetchRes.blob()
+
+  const formData = new FormData()
+  formData.append('file', blob, 'heartbeat.webp') // Dify requires a filename
+  formData.append('user', userId) // The 'user' who is uploading
+
+  const response = await fetch(`${DIFY_API_URL}/files/upload`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${DIFY_API_KEY}`,
+    },
+    body: formData,
+  })
+
+  if (!response.ok) {
+    throw new Error(`Dify file upload failed: ${await response.text()}`)
+  }
+
+  const { id } = await response.json()
+  return id
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -44,11 +73,9 @@ serve(async (req) => {
       throw new Error('Dify API configuration missing')
     }
 
-    // Parse form data
-    const formData = await req.formData()
-    const sessionId = formData.get('sessionId') as string
-    const cameraImage = formData.get('cameraImage') as File
-    const screenImage = formData.get('screenImage') as File
+    // Parse JSON body instead of FormData
+    const body = await req.json()
+    const { sessionId, cameraImage, screenImage } = body
 
     if (!sessionId) {
       throw new Error('Session ID is required')
@@ -88,73 +115,36 @@ serve(async (req) => {
     const userGoal = sessionData.users?.guiding_star || 'No specific goal set'
     const taskName = sessionData.tasks?.title || 'No specific task'
     const taskDescription = sessionData.tasks?.description || ''
+    const userId = sessionData.user_id
 
     console.log('📋 Session context:', { userGoal, taskName, sessionId })
 
-    // Step 2: Upload images to temporary storage
-    const timestamp = Date.now()
-    const userId = sessionData.user_id
+    // Step 2: Upload images directly to Dify
+    const fileIds = await Promise.all([
+      cameraImage ? uploadImageToDify(cameraImage, `user_${userId}`) : Promise.resolve(null),
+      screenImage ? uploadImageToDify(screenImage, `user_${userId}`) : Promise.resolve(null),
+    ])
     
-    let cameraImageUrl = ''
-    let screenImageUrl = ''
+    const [cameraFileId, screenFileId] = fileIds
+    console.log('📤 Images uploaded to Dify:', { cameraFileId, screenFileId })
 
-    if (cameraImage) {
-      const cameraPath = `${userId}/${sessionId}/camera_${timestamp}.jpg`
-      const { data: cameraUpload, error: cameraError } = await supabase.storage
-        .from('heartbeat-temp-media')
-        .upload(cameraPath, cameraImage, {
-          contentType: 'image/jpeg',
-          upsert: true
-        })
-
-      if (cameraError) {
-        console.error('Camera upload error:', cameraError)
-      } else {
-        const { data: cameraUrlData } = supabase.storage
-          .from('heartbeat-temp-media')
-          .getPublicUrl(cameraPath)
-        cameraImageUrl = cameraUrlData.publicUrl
-        console.log('📷 Camera image uploaded:', cameraImageUrl)
-      }
-    }
-
-    if (screenImage) {
-      const screenPath = `${userId}/${sessionId}/screen_${timestamp}.jpg`
-      const { data: screenUpload, error: screenError } = await supabase.storage
-        .from('heartbeat-temp-media')
-        .upload(screenPath, screenImage, {
-          contentType: 'image/jpeg',
-          upsert: true
-        })
-
-      if (screenError) {
-        console.error('Screen upload error:', screenError)
-      } else {
-        const { data: screenUrlData } = supabase.storage
-          .from('heartbeat-temp-media')
-          .getPublicUrl(screenPath)
-        screenImageUrl = screenUrlData.publicUrl
-        console.log('🖥️ Screen image uploaded:', screenImageUrl)
-      }
-    }
-
-    // Step 3: Call Dify API for focus analysis
+    // Step 3: Call Dify API for focus analysis using file IDs
     const difyPayload = {
       inputs: {
         user_goal: userGoal,
         task_name: taskName,
         task_description: taskDescription,
-        ...(cameraImageUrl && {
+        ...(cameraFileId && {
           user_video_image: {
-            transfer_method: 'remote_url',
-            url: cameraImageUrl,
+            transfer_method: 'local_file',
+            upload_file_id: cameraFileId,
             type: 'image'
           }
         }),
-        ...(screenImageUrl && {
+        ...(screenFileId && {
           screenshot_image: {
-            transfer_method: 'remote_url', 
-            url: screenImageUrl,
+            transfer_method: 'local_file', 
+            upload_file_id: screenFileId,
             type: 'image'
           }
         })
@@ -237,9 +227,6 @@ serve(async (req) => {
       console.error('Error updating session state:', updateError)
       // Don't throw here - the drift event was logged successfully
     }
-
-    // Step 6: Schedule cleanup of uploaded images (optional - lifecycle policy handles this)
-    // We could implement a cleanup function here, but the bucket lifecycle policy is more reliable
 
     const response: SessionHeartbeatResponse = {
       success: true,

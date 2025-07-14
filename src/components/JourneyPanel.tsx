@@ -535,6 +535,16 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   };
 
   // Heartbeat function - sends periodic focus check to backend
+  // Helper function to convert blob to base64
+  function blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onloadend = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(blob)
+    })
+  }
+
   const sendHeartbeat = async () => {
     if (!currentSessionId || !isSessionActive) {
       console.log('No active session for heartbeat');
@@ -545,48 +555,42 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
 
     try {
       // Capture images from active streams
-      const cameraBlob = await captureCameraFrame();
-      const screenBlob = await captureScreenFrame();
+      const [cameraBlob, screenBlob] = await Promise.all([
+        captureCameraFrame(),
+        captureScreenFrame()
+      ]);
 
       // Skip heartbeat if no images captured
       if (!cameraBlob && !screenBlob) {
-        console.warn('No images captured for heartbeat, skipping this cycle');
+        console.warn('Heartbeat skipped: No media to send.')
         return;
       }
 
-      // Prepare FormData with session info and images
-      const formData = new FormData();
-      formData.append('sessionId', currentSessionId);
-      
-      if (cameraBlob) {
-        formData.append('cameraImage', cameraBlob, `camera_${Date.now()}.jpg`);
-      }
-      
-      if (screenBlob) {
-        formData.append('screenImage', screenBlob, `screen_${Date.now()}.jpg`);
-      }
+      // Convert blobs to base64 strings
+      const cameraImageBase64 = cameraBlob ? await blobToBase64(cameraBlob) : null
+      const screenImageBase64 = screenBlob ? await blobToBase64(screenBlob) : null
 
-      // Send to session-heartbeat Edge Function
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/session-heartbeat`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      // Invoke the backend function with the new payload
+      const { data, error } = await supabase.functions.invoke('session-heartbeat', {
+        body: { 
+          sessionId: currentSessionId, 
+          cameraImage: cameraImageBase64,
+          screenImage: screenImageBase64 
         },
-        body: formData
       });
 
-      if (response.ok) {
-        const result = await response.json();
-        console.log('✅ Heartbeat sent successfully:', result);
-        
-        // Log drift status for debugging
-        if (result.is_drifting) {
-          console.warn('🚨 Drift detected:', result.reason);
-        } else {
-          console.log('✨ User focused:', result.actual_task);
-        }
+      if (error) {
+        console.error('❌ Heartbeat failed:', error);
+        return;
+      }
+
+      console.log('✅ Heartbeat sent successfully:', data);
+      
+      // Log drift status for debugging
+      if (data.is_drifting) {
+        console.warn('🚨 Drift detected:', data.reason);
       } else {
-        console.error('❌ Heartbeat failed:', response.status, response.statusText);
+        console.log('✨ User focused:', data.actual_task);
       }
     } catch (error) {
       console.error('❌ Error sending heartbeat:', error);
