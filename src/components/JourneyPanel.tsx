@@ -101,16 +101,16 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   const [isVideoOn, setIsVideoOn] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isMicMuted, setIsMicMuted] = useState(false);
-  
+
   // Media stream references
   const [videoStream, setVideoStream] = useState<MediaStream | null>(null);
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [micStream, setMicStream] = useState<MediaStream | null>(null);
-  
+
   // Refs to avoid stale closures in heartbeat callbacks
   const videoStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
-  
+
   // Refs for video elements
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const screenRef = useRef<HTMLVideoElement | null>(null);
@@ -118,6 +118,13 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   // Heartbeat system for distraction detection
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [isHeartbeatActive, setIsHeartbeatActive] = useState(false);
+
+  // Passive listening state (FR-2.2)
+  const [isPassiveListening, setIsPassiveListening] = useState(false);
+  const passiveRecognitionRef = useRef<SpeechRecognition | null>(null);
+  const [passiveTranscript, setPassiveTranscript] = useState<string>('');
+  const lastPassiveLogTime = useRef<number>(0);
+  const PASSIVE_LOG_INTERVAL = 5000; // Log speech every 5 seconds
 
   // Drag and drop state
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
@@ -358,11 +365,11 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
         console.log('Video turned off');
       } else {
         // Turn on video
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
-            width: { ideal: 1280 }, 
-            height: { ideal: 720 } 
-          } 
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
         });
         setVideoStream(stream);
         videoStreamRef.current = stream;
@@ -392,9 +399,9 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
         console.log('Screen sharing stopped');
       } else {
         // Start screen sharing
-        const stream = await navigator.mediaDevices.getDisplayMedia({ 
-          video: true, 
-          audio: true 
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: true
         });
         setScreenStream(stream);
         screenStreamRef.current = stream;
@@ -402,7 +409,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
         if (screenRef.current) {
           screenRef.current.srcObject = stream;
         }
-        
+
         // Handle when user stops sharing via browser UI
         stream.getVideoTracks()[0].addEventListener('ended', () => {
           setScreenStream(null);
@@ -412,7 +419,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
             screenRef.current.srcObject = null;
           }
         });
-        
+
         console.log('Screen sharing started');
       }
     } catch (error) {
@@ -463,7 +470,149 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       setMicStream(null);
       setIsMicMuted(false);
     }
+
+    // Stop passive listening
+    stopPassiveListening();
+
     console.log('All media streams cleaned up');
+  };
+
+  // FR-2.2: Passive Listening Functions
+  const initializePassiveListening = () => {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      console.warn('Speech recognition not supported in this browser');
+      return;
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      let finalTranscript = '';
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript;
+        }
+      }
+
+      if (finalTranscript.trim()) {
+        setPassiveTranscript(prev => prev + finalTranscript);
+        logPassiveSpeech(finalTranscript);
+      }
+    };
+
+    recognition.onerror = (event: SpeechRecognitionError) => {
+      console.error('Passive speech recognition error:', event.error);
+      // Restart recognition on error (unless it's a critical error)
+      if (event.error !== 'not-allowed' && event.error !== 'service-not-allowed') {
+        setTimeout(() => {
+          if (isSessionActive && passiveRecognitionRef.current) {
+            try {
+              recognition.start();
+            } catch (error) {
+              console.warn('Failed to restart passive recognition:', error);
+            }
+          }
+        }, 1000);
+      }
+    };
+
+    recognition.onend = () => {
+      // Restart recognition if session is still active
+      if (isSessionActive && passiveRecognitionRef.current) {
+        try {
+          recognition.start();
+        } catch (error) {
+          console.warn('Failed to restart passive recognition after end:', error);
+        }
+      }
+    };
+
+    passiveRecognitionRef.current = recognition;
+  };
+
+  const startPassiveListening = () => {
+    if (!currentSessionId) {
+      console.warn('Cannot start passive listening: no active session');
+      return;
+    }
+
+    if (isPassiveListening) {
+      console.log('Passive listening already active');
+      return;
+    }
+
+    // Initialize recognition if not already done
+    if (!passiveRecognitionRef.current) {
+      initializePassiveListening();
+    }
+
+    if (passiveRecognitionRef.current) {
+      try {
+        passiveRecognitionRef.current.start();
+        setIsPassiveListening(true);
+        setPassiveTranscript('');
+        console.log('✅ Passive listening started');
+      } catch (error) {
+        console.error('Failed to start passive listening:', error);
+      }
+    }
+  };
+
+  const stopPassiveListening = () => {
+    if (passiveRecognitionRef.current) {
+      try {
+        passiveRecognitionRef.current.stop();
+        passiveRecognitionRef.current = null;
+      } catch (error) {
+        console.warn('Error stopping passive recognition:', error);
+      }
+    }
+    setIsPassiveListening(false);
+    setPassiveTranscript('');
+    console.log('⏹️ Passive listening stopped');
+  };
+
+  const logPassiveSpeech = async (transcript: string) => {
+    if (!currentSessionId || !transcript.trim()) return;
+
+    const now = Date.now();
+    if (now - lastPassiveLogTime.current < PASSIVE_LOG_INTERVAL) {
+      return; // Too soon since last log
+    }
+
+    lastPassiveLogTime.current = now;
+
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/log-passive-speech`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          session_id: currentSessionId,
+          transcript: transcript.trim(),
+          timestamp: new Date().toISOString(),
+          interim: false
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ Passive speech logged:', result.event_id);
+      } else {
+        console.error('Failed to log passive speech:', response.status, response.statusText);
+      }
+    } catch (error) {
+      console.error('Error logging passive speech:', error);
+    }
   };
 
   // Image capture utilities for heartbeat system
@@ -478,10 +627,10 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       console.log('🎥 DEBUG: Starting camera capture...');
       const tracks = stream.getVideoTracks();
       console.log('🎥 DEBUG: Video tracks:', tracks.length, tracks[0]?.readyState);
-      
+
       const canvas = document.createElement('canvas');
       const video = document.createElement('video');
-      
+
       // Set up video element
       video.srcObject = stream;
       video.muted = true;
@@ -516,7 +665,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
           resolve(null);
         };
       });
-       
+
       // Wait for first frame to be ready
       console.log('🎥 DEBUG: Video dimensions after metadata/timeout:', video.videoWidth, 'x', video.videoHeight);
 
@@ -525,12 +674,12 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       const targetHeight = 360;
       const sourceWidth = video.videoWidth || 640;
       const sourceHeight = video.videoHeight || 480;
-      
+
       // Calculate aspect ratio preserving dimensions
       const aspectRatio = sourceWidth / sourceHeight;
       let finalWidth = targetWidth;
       let finalHeight = targetHeight;
-      
+
       if (aspectRatio > (targetWidth / targetHeight)) {
         finalHeight = targetWidth / aspectRatio;
       } else {
@@ -572,15 +721,15 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       console.log('🖥️ DEBUG: Starting screen capture...');
       const tracks = stream.getVideoTracks();
       console.log('🖥️ DEBUG: Screen tracks:', tracks.length, tracks[0]?.readyState);
-      
+
       const canvas = document.createElement('canvas');
       const video = document.createElement('video');
-      
+
       // Set up video element
       video.srcObject = stream;
       video.muted = true;
       await video.play();
-      
+
       // Wait for metadata (dimensions) – if the event fired before we attached the
       // handler, or it never comes, fall back after 1s so the Promise resolves
       await new Promise((resolve) => {
@@ -604,12 +753,12 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       const targetHeight = 540;
       const sourceWidth = video.videoWidth || 1280;
       const sourceHeight = video.videoHeight || 720;
-      
+
       // Calculate aspect ratio preserving dimensions
       const aspectRatio = sourceWidth / sourceHeight;
       let finalWidth = targetWidth;
       let finalHeight = targetHeight;
-      
+
       if (aspectRatio > (targetWidth / targetHeight)) {
         finalHeight = targetWidth / aspectRatio;
       } else {
@@ -689,10 +838,10 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
 
       // Invoke the backend function with the new payload
       const { data, error } = await supabase.functions.invoke('session-heartbeat', {
-        body: { 
-          sessionId: sessionId, 
+        body: {
+          sessionId: sessionId,
           cameraImage: cameraImageBase64,
-          screenImage: screenImageBase64 
+          screenImage: screenImageBase64
         },
       });
 
@@ -702,7 +851,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       }
 
       console.log('✅ Heartbeat sent successfully:', data);
-      
+
       // Log drift status for debugging
       if (data.is_drifting) {
         console.warn('🚨 Drift detected:', data.drift_reason);
@@ -723,10 +872,10 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
 
     console.log('🔄 Starting heartbeat monitoring (60s intervals) for session:', sessionId);
     setIsHeartbeatActive(true);
-    
+
     // Send first heartbeat after longer delay to ensure streams are ready
     setTimeout(() => sendHeartbeat(sessionId, isActive), 8000); // Wait 8 seconds for streams to stabilize
-    
+
     // Then send every 60 seconds
     heartbeatIntervalRef.current = setInterval(() => sendHeartbeat(sessionId, isActive), 60000);
   };
@@ -761,14 +910,25 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       })
       .on('broadcast', { event: 'deep_drift_detected' }, (payload) => {
         console.log('🚨 Deep drift detected, triggering AI intervention:', payload);
-        
+
         // Trigger SeagullPanel with intervention message
-        const interventionMessage = payload.payload?.message || 
+        const interventionMessage = payload.payload?.message ||
           `Captain, I've noticed you've been drifting for ${payload.payload?.consecutive_drifts || 5} minutes. Let's get back on course together.`;
-        
+
         setSeagullMessage(interventionMessage);
         setShowSeagullPanel(true);
-        
+
+        // Play TTS audio if available (FR-2.4)
+        if (payload.payload?.audio_url && payload.payload?.tts_success) {
+          try {
+            const audio = new Audio(payload.payload.audio_url);
+            audio.play();
+            console.log('🔊 Playing drift intervention TTS audio');
+          } catch (audioError) {
+            console.error('Error playing drift intervention audio:', audioError);
+          }
+        }
+
         console.log('🦅 Seagull intervention activated');
       })
       .subscribe((status) => {
@@ -886,7 +1046,12 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       // Step 6: Start heartbeat monitoring for distraction detection
       startHeartbeat(sessionId, true);
 
-      // Step 7: Show control panel and hide journey panel
+      // Step 7: Start passive listening for FR-2.2
+      setTimeout(() => {
+        startPassiveListening();
+      }, 2000); // Start after 2 seconds to ensure session is fully initialized
+
+      // Step 8: Show control panel and hide journey panel
       setShowControlPanel(true);
       onClose?.();
 

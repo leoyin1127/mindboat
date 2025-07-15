@@ -22,7 +22,7 @@ interface SplineEvent {
     numbaer5?: number
     voiceInteraction?: boolean
     seagullMessage?: string
-    [key: string]: any
+    [key: string]: unknown
   }
   timestamp: string
   source: string
@@ -31,11 +31,13 @@ interface SplineEvent {
 interface SplineEventHandlerProps {
   onEventReceived?: (event: SplineEvent) => void
   onModalStateChange?: (isOpen: boolean) => void
+  currentUser?: { id: string; guidingStar?: string | null } | null
 }
 
 export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
   onEventReceived,
-  onModalStateChange
+  onModalStateChange,
+  currentUser
 }) => {
   const [showModal, setShowModal] = useState(false)
   const [currentEvent, setCurrentEvent] = useState<SplineEvent | null>(null)
@@ -52,6 +54,7 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
   // Notify parent component of modal state changes
   useEffect(() => {
     const isAnyModalOpen = showModal || showLifeGoalsModal || showWelcomePanel || showJourneyPanel || showSeagullPanel;
+    console.log('👁️ MODAL STATE CHANGED:', { showModal, showLifeGoalsModal, showWelcomePanel, showJourneyPanel, showSeagullPanel, isAnyModalOpen })
     onModalStateChange?.(isAnyModalOpen);
 
     // Also notify via custom event
@@ -73,6 +76,7 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
 
         console.log('=== FRONTEND RECEIVED SPLINE EVENT ===')
         console.log('Complete event:', JSON.stringify(event, null, 2))
+        console.log('Current user context:', currentUser)
 
         // Event debouncing and filtering
         const now = Date.now()
@@ -173,10 +177,19 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
         // Priority 6: Based on number value
         else if (event.payload.number === 2) {
           shouldShowWelcome = true
+          console.log('🎯 DECISION: Welcome (number === 2)')
         } else if (event.payload.number === 1) {
-          shouldShowGoals = true
+          // For start button: show Journey panel if user already has a goal, otherwise show Goals modal
+          if (currentUser?.guidingStar) {
+            shouldShowJourney = true
+            console.log('🎯 DECISION: Journey (number === 1, user has goal:', currentUser.guidingStar, ')')
+          } else {
+            shouldShowGoals = true
+            console.log('🎯 DECISION: Goals (number === 1, no user goal)')
+          }
         } else if (event.payload.number === 3) {
           shouldShowJourney = true
+          console.log('🎯 DECISION: Journey (number === 3)')
         }
         // No default fallback - only show modals for explicit triggers
         else {
@@ -184,23 +197,28 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
         }
 
         // Execute decision - use delay to ensure state update
+        console.log('🚀 FINAL DECISION:', { shouldShowSeagull, shouldShowWelcome, shouldShowGoals, shouldShowJourney })
         setTimeout(() => {
           if (shouldShowSeagull) {
+            console.log('📱 Setting SeagullPanel visible')
             setShowSeagullPanel(true)
             setShowWelcomePanel(false)
             setShowLifeGoalsModal(false)
             setShowJourneyPanel(false)
           } else if (shouldShowWelcome) {
+            console.log('📱 Setting WelcomePanel visible')
             setShowWelcomePanel(true)
             setShowLifeGoalsModal(false)
             setShowJourneyPanel(false)
             setShowSeagullPanel(false)
           } else if (shouldShowGoals) {
+            console.log('📱 Setting LifeGoalsModal visible')
             setShowLifeGoalsModal(true)
             setShowWelcomePanel(false)
             setShowJourneyPanel(false)
             setShowSeagullPanel(false)
           } else if (shouldShowJourney) {
+            console.log('📱 Setting JourneyPanel visible')
             setShowJourneyPanel(true)
             setShowWelcomePanel(false)
             setShowLifeGoalsModal(false)
@@ -313,7 +331,6 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
       {/* Welcome Panel - Left side fixed position */}
       <WelcomePanel
         isVisible={showWelcomePanel}
-        onClose={() => setShowWelcomePanel(false)}
         onVoiceSubmitSuccess={handleVoiceSubmitSuccess}
       />
 
