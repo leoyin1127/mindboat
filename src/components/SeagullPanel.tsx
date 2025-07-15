@@ -16,7 +16,7 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
   const [isRecording, setIsRecording] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
-  
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -39,26 +39,26 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
   const startVoiceInteraction = async () => {
     try {
       setConnectionStatus('connecting');
-      
+
       // Get microphone access
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+      const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true
-        } 
+        }
       });
-      
+
       streamRef.current = stream;
 
       // Set up audio analysis for visual feedback
       const audioContext = new AudioContext();
       const analyser = audioContext.createAnalyser();
       const source = audioContext.createMediaStreamSource(stream);
-      
+
       analyser.fftSize = 256;
       source.connect(analyser);
-      
+
       audioContextRef.current = audioContext;
       analyserRef.current = analyser;
 
@@ -66,7 +66,7 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: 'audio/webm;codecs=opus'
       });
-      
+
       mediaRecorderRef.current = mediaRecorder;
 
       const audioChunks: BlobPart[] = [];
@@ -74,7 +74,7 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunks.push(event.data);
-          
+
           // Send audio chunk to backend for real-time processing
           sendAudioChunk(event.data);
         }
@@ -97,7 +97,7 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
     } catch (error) {
       console.error('Error starting voice interaction:', error);
       setConnectionStatus('error');
-      
+
       if (error instanceof Error && error.name === 'NotAllowedError') {
         console.log('Microphone access denied');
       }
@@ -133,7 +133,7 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
   const handleStopConversation = () => {
     // Stop voice interaction first
     stopVoiceInteraction();
-    
+
     // Then close the panel
     onClose?.();
   };
@@ -142,18 +142,18 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
     if (!analyserRef.current) return;
 
     const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
-    
+
     const updateLevel = () => {
       if (!analyserRef.current) return;
-      
+
       analyserRef.current.getByteFrequencyData(dataArray);
-      
+
       // Calculate average audio level
       const average = dataArray.reduce((sum, value) => sum + value, 0) / dataArray.length;
       const normalizedLevel = Math.min(average / 128, 1); // Normalize to 0-1
-      
+
       setAudioLevel(normalizedLevel);
-      
+
       animationFrameRef.current = requestAnimationFrame(updateLevel);
     };
 
@@ -189,6 +189,8 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
       formData.append('audio', audioBlob, 'final-audio.webm');
       formData.append('timestamp', new Date().toISOString());
       formData.append('type', 'final');
+      // Add test query for FR-2.3 implementation
+      formData.append('query', 'I need help staying focused on my current task');
 
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/voice-interaction`, {
         method: 'POST',
@@ -200,6 +202,29 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
 
       if (!response.ok) {
         console.error('Failed to send final audio:', response.statusText);
+        return;
+      }
+
+      // Parse the AI response with TTS audio
+      const result = await response.json();
+      console.log('✅ Voice interaction response:', result);
+
+      if (result.success && result.aiResponse) {
+        // Display AI text response
+        console.log('🤖 AI Response:', result.aiResponse.text);
+
+        // Play TTS audio if available
+        if (result.aiResponse.audioUrl && result.aiResponse.ttsSuccess) {
+          try {
+            const audio = new Audio(result.aiResponse.audioUrl);
+            audio.play();
+            console.log('🔊 Playing TTS audio response');
+          } catch (audioError) {
+            console.error('Error playing TTS audio:', audioError);
+          }
+        } else if (result.aiResponse.ttsError) {
+          console.error('TTS conversion failed:', result.aiResponse.ttsError);
+        }
       }
     } catch (error) {
       console.error('Error sending final audio:', error);
@@ -217,11 +242,11 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
                       before:absolute before:inset-0 before:rounded-2xl 
                       before:bg-gradient-to-br before:from-white/8 before:via-transparent before:to-transparent 
                       before:pointer-events-none overflow-hidden">
-        
+
         {/* Inner glow overlay */}
         <div className="absolute inset-0 bg-gradient-to-br from-white/8 via-transparent to-transparent 
                         rounded-2xl pointer-events-none"></div>
-        
+
         {/* Main content - horizontal layout */}
         <div className="relative z-10 flex items-center justify-between gap-3">
           {/* Left: Seagull Avatar with status indicator */}
@@ -238,14 +263,14 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
                   target.src = 'https://images.pexels.com/photos/158251/bird-seagull-animal-nature-158251.jpeg?auto=compress&cs=tinysrgb&w=80';
                 }}
               />
-              
+
               {/* Voice activity indicator */}
               {isRecording && (
                 <div className="absolute inset-0 rounded-full border border-green-400/60 
                                 animate-pulse bg-green-400/10"></div>
               )}
             </div>
-            
+
             {/* Connection status indicator - small dot on avatar */}
             <div className="absolute -bottom-1 -right-1 w-3 h-3 rounded-full border border-white/30 
                             flex items-center justify-center">
@@ -275,11 +300,10 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
               {[...Array(4)].map((_, i) => (
                 <div
                   key={i}
-                  className={`w-1 rounded-full transition-all duration-150 ${
-                    audioLevel * 4 > i 
-                      ? 'bg-green-400 h-4' 
-                      : 'bg-white/20 h-1'
-                  }`}
+                  className={`w-1 rounded-full transition-all duration-150 ${audioLevel * 4 > i
+                    ? 'bg-green-400 h-4'
+                    : 'bg-white/20 h-1'
+                    }`}
                 />
               ))}
             </div>
@@ -297,7 +321,7 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
               {/* Button inner glow */}
               <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-white/10 to-white/5 
                               opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-              
+
               {/* Close X icon */}
               <X className="w-4 h-4 text-white/80 hover:text-white relative z-10" />
             </button>

@@ -116,13 +116,114 @@ function App() {
       <SplineEventHandler
         onEventReceived={handleSplineEvent}
         onModalStateChange={setIsModalOpen}
+        currentUser={currentUser}
       />
 
       {/* Subtle gradient overlay for depth */}
       <div className="fixed inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/20 pointer-events-none z-10"></div>
 
-      {/* Manual Test Button - positioned at bottom right */}
-      <div className="fixed bottom-4 right-4 z-30">
+      {/* Temporary Test Buttons - positioned at bottom right */}
+      <div className="fixed bottom-4 right-4 z-30 flex flex-col gap-2">
+        {/* Start Journey Button (replaces Spline start button) */}
+        <button
+          onClick={async () => {
+            try {
+              const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/journey-webhook`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                },
+                body: JSON.stringify({})
+              });
+
+              if (response.ok) {
+                console.log('Journey webhook triggered successfully');
+              } else {
+                console.error('Failed to trigger journey webhook');
+              }
+            } catch (error) {
+              console.error('Error triggering journey webhook:', error);
+            }
+          }}
+          className="px-4 py-2 bg-gradient-to-br from-blue-500/20 via-blue-400/15 to-blue-300/10
+                     hover:from-blue-500/30 hover:via-blue-400/25 hover:to-blue-300/20
+                     text-white rounded-xl transition-all duration-300
+                     border border-blue-400/30 hover:border-blue-400/50
+                     font-inter font-medium text-sm backdrop-blur-md
+                     shadow-[0_4px_16px_rgba(0,0,0,0.1),0_1px_4px_rgba(0,0,0,0.06)]
+                     transform hover:scale-[1.02] active:scale-[0.98]"
+        >
+          🚀 Start Journey
+        </button>
+
+        {/* Welcome Button */}
+        <button
+          onClick={async () => {
+            try {
+              const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/welcome-webhook`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                },
+                body: JSON.stringify({})
+              });
+
+              if (response.ok) {
+                console.log('Welcome webhook triggered successfully');
+              } else {
+                console.error('Failed to trigger welcome webhook');
+              }
+            } catch (error) {
+              console.error('Error triggering welcome webhook:', error);
+            }
+          }}
+          className="px-4 py-2 bg-gradient-to-br from-green-500/20 via-green-400/15 to-green-300/10
+                     hover:from-green-500/30 hover:via-green-400/25 hover:to-green-300/20
+                     text-white rounded-xl transition-all duration-300
+                     border border-green-400/30 hover:border-green-400/50
+                     font-inter font-medium text-sm backdrop-blur-md
+                     shadow-[0_4px_16px_rgba(0,0,0,0.1),0_1px_4px_rgba(0,0,0,0.06)]
+                     transform hover:scale-[1.02] active:scale-[0.98]"
+        >
+          👋 Welcome
+        </button>
+
+        {/* Goals Button */}
+        <button
+          onClick={async () => {
+            try {
+              const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/goals-webhook`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                },
+                body: JSON.stringify({})
+              });
+
+              if (response.ok) {
+                console.log('Goals webhook triggered successfully');
+              } else {
+                console.error('Failed to trigger goals webhook');
+              }
+            } catch (error) {
+              console.error('Error triggering goals webhook:', error);
+            }
+          }}
+          className="px-4 py-2 bg-gradient-to-br from-purple-500/20 via-purple-400/15 to-purple-300/10
+                     hover:from-purple-500/30 hover:via-purple-400/25 hover:to-purple-300/20
+                     text-white rounded-xl transition-all duration-300
+                     border border-purple-400/30 hover:border-purple-400/50
+                     font-inter font-medium text-sm backdrop-blur-md
+                     shadow-[0_4px_16px_rgba(0,0,0,0.1),0_1px_4px_rgba(0,0,0,0.06)]
+                     transform hover:scale-[1.02] active:scale-[0.98]"
+        >
+          🎯 Goals
+        </button>
+
+        {/* Seagull Button */}
         <button
           onClick={async () => {
             try {
@@ -152,7 +253,7 @@ function App() {
                      shadow-[0_4px_16px_rgba(0,0,0,0.1),0_1px_4px_rgba(0,0,0,0.06)]
                      transform hover:scale-[1.02] active:scale-[0.98]"
         >
-          Talk to Seagull
+          🐦 Talk to Seagull
         </button>
       </div>
     </div>

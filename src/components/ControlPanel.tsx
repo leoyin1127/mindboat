@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mic, MicOff, Video, VideoOff, Monitor, MonitorOff, Anchor } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, Monitor, MonitorOff, Anchor, TestTube } from 'lucide-react';
 
 interface ControlPanelProps {
   isVisible: boolean;
@@ -46,6 +46,64 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const handleEndVoyage = () => {
     console.log('Ending voyage...');
     onEndVoyage?.();
+  };
+
+  // FR-2.4: Test drift intervention functionality
+  const handleTestDriftIntervention = async () => {
+    if (!sessionId) {
+      console.error('No active session for drift intervention test');
+      return;
+    }
+
+    console.log('🧪 Testing drift intervention...');
+
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/drift-intervention`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          session_id: sessionId,
+          user_id: 'test-user-id', // In real implementation, get from auth
+          consecutive_drifts: 5,
+          drift_context: {
+            last_drift_reason: 'Test drift simulation',
+            current_task: 'Test task',
+            user_goal: 'Test goal'
+          },
+          test_mode: true
+        })
+      });
+
+      if (!response.ok) {
+        console.error('Failed to trigger drift intervention:', response.status);
+        return;
+      }
+
+      const result = await response.json();
+      console.log('✅ Test drift intervention result:', result);
+
+      // Play TTS audio if available
+      if (result.audio_url && result.tts_success) {
+        try {
+          const audio = new Audio(result.audio_url);
+          audio.play();
+          console.log('🔊 Playing test intervention audio');
+        } catch (audioError) {
+          console.error('Error playing intervention audio:', audioError);
+        }
+      }
+
+      // Show text message
+      if (result.intervention_message) {
+        console.log('🤖 Intervention message:', result.intervention_message);
+      }
+
+    } catch (error) {
+      console.error('Error testing drift intervention:', error);
+    }
   };
 
   return (
@@ -160,6 +218,33 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                            transition-all duration-300 z-20
                            shadow-[0_4px_16px_rgba(0,0,0,0.1),0_1px_4px_rgba(0,0,0,0.06)]">
               {isScreenSharing ? 'Stop screen sharing' : 'Start screen sharing'}
+            </span>
+          </button>
+
+          {/* Test Drift Intervention Button - FR-2.4 */}
+          <button
+            onClick={handleTestDriftIntervention}
+            className="w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 
+                       backdrop-blur-md border border-white/25 shadow-lg relative overflow-visible group
+                       bg-gradient-to-br from-purple-500/20 via-purple-400/15 to-purple-600/25 
+                       border-purple-400/30 hover:from-purple-500/30 hover:via-purple-400/25 hover:to-purple-600/35
+                       shadow-purple-400/10 hover:shadow-purple-400/20"
+          >
+            {/* Button inner glow */}
+            <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-purple-400/10 to-purple-600/5 
+                            opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+
+            <TestTube className="w-5 h-5 text-white relative z-10" />
+
+            {/* Custom hover tooltip */}
+            <span className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-1.5 
+                           bg-gradient-to-br from-white/15 via-white/10 to-white/8 
+                           backdrop-blur-md border border-white/25 rounded-md 
+                           text-sm text-white/90 whitespace-nowrap 
+                           opacity-0 invisible group-hover:opacity-100 group-hover:visible 
+                           transition-all duration-300 z-20
+                           shadow-[0_4px_16px_rgba(0,0,0,0.1),0_1px_4px_rgba(0,0,0,0.06)]">
+              Test Drift Intervention
             </span>
           </button>
 

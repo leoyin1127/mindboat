@@ -97,7 +97,7 @@ serve(async (req) => {
       // Step 3: Check if intervention should be triggered
       if (consecutiveDrifts >= 5) {
         const latestDrift = recentDrifts[0] // Most recent drift event
-        
+
         // Only trigger if the latest drift hasn't already triggered an intervention
         if (!latestDrift.intervention_triggered) {
           sessionsToCheck.push({
@@ -117,9 +117,33 @@ serve(async (req) => {
       try {
         console.log(`🚨 Triggering intervention for session ${sessionInfo.session_id} (${sessionInfo.consecutive_drifts} consecutive drifts)`)
 
-        // Broadcast deep drift detection event on the session's Realtime channel
+        // Step 4.1: Call the new drift-intervention function with TTS
+        const interventionResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/drift-intervention`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            session_id: sessionInfo.session_id,
+            user_id: sessionInfo.user_id,
+            consecutive_drifts: sessionInfo.consecutive_drifts,
+            test_mode: false
+          })
+        })
+
+        let interventionData: any = null
+        if (interventionResponse.ok) {
+          interventionData = await interventionResponse.json()
+          console.log(`✅ AI intervention generated for session ${sessionInfo.session_id}`)
+        } else {
+          console.error(`Failed to generate AI intervention for session ${sessionInfo.session_id}:`, interventionResponse.status)
+          // Continue with fallback broadcast
+        }
+
+        // Step 4.2: Broadcast deep drift detection event on the session's Realtime channel
         const channelName = `session:${sessionInfo.session_id}`
-        
+
         const { error: broadcastError } = await supabase
           .channel(channelName)
           .send({
@@ -129,7 +153,11 @@ serve(async (req) => {
               session_id: sessionInfo.session_id,
               user_id: sessionInfo.user_id,
               consecutive_drifts: sessionInfo.consecutive_drifts,
-              message: `Deep drift detected after ${sessionInfo.consecutive_drifts} consecutive minutes. AI intervention activated.`,
+              message: interventionData?.intervention_message ||
+                `Deep drift detected after ${sessionInfo.consecutive_drifts} consecutive minutes. AI intervention activated.`,
+              audio_url: interventionData?.audio_url || null,
+              audio_data: interventionData?.audio_data || null,
+              tts_success: interventionData?.tts_success || false,
               timestamp: new Date().toISOString()
             }
           })
@@ -139,7 +167,7 @@ serve(async (req) => {
           continue
         }
 
-        // Mark the latest drift event as having triggered an intervention
+        // Step 4.3: Mark the latest drift event as having triggered an intervention
         const { error: updateError } = await supabase
           .from('drift_events')
           .update({ intervention_triggered: true })
@@ -174,7 +202,7 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('❌ Deep drift monitoring error:', error)
-    
+
     const errorResponse = {
       success: false,
       error: error.message,
