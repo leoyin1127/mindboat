@@ -24,7 +24,7 @@ interface SessionHeartbeatResponse {
   message: string;
 }
 
-// Helper function to convert data URL to Blob (Deno doesn't support data: URLs in fetch)
+// Helper function to convert data URL to Blob
 function dataUrlToBlob(dataUrl: string): Blob {
   const [header, b64] = dataUrl.split(',')
   const mime = header.match(/data:(.+);base64/)?.[1] || 'image/jpeg'
@@ -32,57 +32,68 @@ function dataUrlToBlob(dataUrl: string): Blob {
   return new Blob([bytes], { type: mime })
 }
 
-// Helper function to upload a single image to Dify
-async function uploadImageToDify(base64Image: string, userId: string, imageType: 'camera' | 'screen'): Promise<string | null> {
-  const DIFY_API_KEY = Deno.env.get('DIFY_API_KEY')!
-  const DIFY_API_URL = Deno.env.get('DIFY_API_URL')!
-
+// Helper function to upload image to Supabase Storage and return public URL
+async function uploadImageToStorage(
+  supabase: any, 
+  imageB64: string, 
+  userId: string, 
+  type: 'camera' | 'screen'
+): Promise<string | null> {
   try {
-    console.log(`📤 DEBUG: Uploading ${imageType} image to Dify for user ${userId}`)
-    console.log(`📤 DEBUG: Base64 header: ${base64Image.slice(0, 50)}...`)
+    // 1. Convert base64 Data URL to a Blob (reusing existing dataUrlToBlob)
+    const imageBlob = dataUrlToBlob(imageB64)
     
-    // Convert base64 data URI to a Blob using custom function
-    const blob = dataUrlToBlob(base64Image)
-    
-    console.log(`📊 Blob info - Type: ${blob.type}, Size: ${blob.size} bytes (${(blob.size / 1024 / 1024).toFixed(2)} MB)`)
+    console.log(`📤 Uploading ${type} image to storage - Size: ${(imageBlob.size / 1024 / 1024).toFixed(2)} MB`)
     
     // Size guard - reject if over 3 MB
-    if (blob.size > 3 * 1024 * 1024) {
-      throw new Error(`Image too large: ${(blob.size / 1024 / 1024).toFixed(2)} MB (max 3 MB)`)
+    if (imageBlob.size > 3 * 1024 * 1024) {
+      throw new Error(`Image too large: ${(imageBlob.size / 1024 / 1024).toFixed(2)} MB (max 3 MB)`)
     }
     
-    // Generate filename that matches blob MIME type
-    const extension = blob.type === 'image/png' ? 'png'
-                     : blob.type === 'image/webp' ? 'webp'
-                     : 'jpg'
-    const filename = `heartbeat_${imageType}.${extension}`
-    
-    const formData = new FormData()
-    formData.append('file', blob, filename)
-    formData.append('user', userId)
-    
-    console.log(`📋 FormData keys: ${Array.from(formData.keys()).join(', ')}, filename: ${filename}`)
+    // 2. Define a unique, organized file path
+    const filePath = `${userId}/${type}-${Date.now()}.png`
 
-    const response = await fetch(`${DIFY_API_URL}/files/upload`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${DIFY_API_KEY}`,
-      },
-      body: formData,
-    })
+    // 3. Upload the file to Supabase Storage
+    const { error: uploadError } = await supabase.storage
+      .from('heartbeat-images')
+      .upload(filePath, imageBlob)
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`Dify file upload failed (${response.status}): ${errorText}`)
+    if (uploadError) {
+      console.error(`Storage upload failed for ${type}:`, uploadError)
+      return null
     }
 
-    const result = await response.json()
-    console.log(`✅ ${imageType} image uploaded successfully, file ID: ${result.id}`)
-    return result.id
+    // 4. Get the public URL of the successfully uploaded file
+    const { data } = supabase.storage
+      .from('heartbeat-images')
+      .getPublicUrl(filePath)
+      
+    console.log(`✅ ${type} image uploaded successfully to: ${data.publicUrl}`)
+    return data.publicUrl
     
-  } catch (difyErr) {
-    console.error(`❌ Dify upload failed for ${imageType} image:`, difyErr)
-    return null // Let heartbeat continue with other image
+  } catch (error) {
+    console.error(`❌ Storage upload failed for ${type} image:`, error)
+    return null
+  }
+}
+
+// Helper function to clean up uploaded images in case of Dify API failure
+async function cleanupUploadedImages(supabase: any, imageUrls: string[]) {
+  for (const url of imageUrls) {
+    if (!url) continue
+    try {
+      // Extract file path from public URL
+      const urlParts = url.split('/storage/v1/object/public/heartbeat-images/')
+      if (urlParts.length > 1) {
+        const filePath = urlParts[1]
+        await supabase.storage
+          .from('heartbeat-images')
+          .remove([filePath])
+        console.log(`🧹 Cleaned up image: ${filePath}`)
+      }
+    } catch (error) {
+      console.error('Error cleaning up image:', error)
+    }
   }
 }
 
@@ -106,7 +117,7 @@ serve(async (req) => {
       throw new Error('Dify API configuration missing')
     }
 
-    // Parse JSON body instead of FormData
+    // Parse JSON body
     const body = await req.json()
     const { sessionId, cameraImage, screenImage } = body
 
@@ -160,17 +171,26 @@ serve(async (req) => {
 
     console.log('📋 Session context:', { userGoal, taskName, sessionId })
 
-    // Step 2: Upload images directly to Dify
-    const fileIds = await Promise.all([
-      cameraImage ? uploadImageToDify(cameraImage, `user_${userId}`, 'camera') : Promise.resolve(null),
-      screenImage ? uploadImageToDify(screenImage, `user_${userId}`, 'screen') : Promise.resolve(null),
-    ])
+    // Step 2: Upload images to Supabase Storage and get public URLs
+    const uploadPromises: Promise<string | null>[] = []
+    if (cameraImage) {
+      uploadPromises.push(uploadImageToStorage(supabase, cameraImage, `user_${userId}`, 'camera'))
+    } else {
+      uploadPromises.push(Promise.resolve(null))
+    }
     
-    const [cameraFileId, screenFileId] = fileIds
-    console.log('📤 Images uploaded to Dify:', { cameraFileId, screenFileId })
+    if (screenImage) {
+      uploadPromises.push(uploadImageToStorage(supabase, screenImage, `user_${userId}`, 'screen'))
+    } else {
+      uploadPromises.push(Promise.resolve(null))
+    }
+
+    const [cameraImageUrl, screenImageUrl] = await Promise.all(uploadPromises)
+    
+    console.log('📤 Images uploaded to storage:', { cameraImageUrl, screenImageUrl })
 
     // Check if we have any valid uploads
-    if (!cameraFileId && !screenFileId) {
+    if (!cameraImageUrl && !screenImageUrl) {
       console.warn('⚠️ No images uploaded successfully, returning default focused state')
       
       // Log a drift event with no media available
@@ -194,7 +214,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({
         success: true,
         is_drifting: false,
-        reason: 'No media available for analysis',
+        drift_reason: 'No media available for analysis',
         actual_task: taskName,
         user_mood: null,
         mood_reason: null,
@@ -205,26 +225,14 @@ serve(async (req) => {
       })
     }
 
-    // Step 3: Call Dify API for focus analysis using file IDs
+    // Step 3: Call Dify API for focus analysis using image URLs
     const difyPayload = {
       inputs: {
-        user_goal: userGoal,
+        goal_text: userGoal,
         task_name: taskName,
-        task_description: taskDescription,
-        ...(cameraFileId && {
-          user_video_image: {
-            transfer_method: 'local_file',
-            upload_file_id: cameraFileId,
-            type: 'image'
-          }
-        }),
-        ...(screenFileId && {
-          screenshot_image: {
-            transfer_method: 'local_file', 
-            upload_file_id: screenFileId,
-            type: 'image'
-          }
-        })
+        task_name2: taskDescription,
+        ...(cameraImageUrl && { user_video_image: cameraImageUrl }),
+        ...(screenImageUrl && { screenshot_image: screenImageUrl })
       },
       response_mode: 'blocking',
       user: `user_${userId}`
@@ -232,22 +240,63 @@ serve(async (req) => {
 
     console.log('🤖 Calling Dify API with payload:', JSON.stringify(difyPayload, null, 2))
 
-    const difyResponse = await fetch(difyApiUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${difyApiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(difyPayload)
-    })
+    let difyResult
+    let uploadedUrls = [cameraImageUrl, screenImageUrl].filter((url): url is string => Boolean(url))
 
-    if (!difyResponse.ok) {
-      const errorText = await difyResponse.text()
-      throw new Error(`Dify API error: ${difyResponse.status} - ${errorText}`)
+    try {
+      const difyResponse = await fetch(difyApiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${difyApiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(difyPayload)
+      })
+
+      if (!difyResponse.ok) {
+        const errorText = await difyResponse.text()
+        throw new Error(`Dify API error: ${difyResponse.status} - ${errorText}`)
+      }
+
+      difyResult = await difyResponse.json()
+      console.log('🤖 Dify response:', difyResult)
+
+    } catch (difyError) {
+      console.error('❌ Dify API call failed:', difyError)
+      
+      // Clean up uploaded images since Dify call failed
+      await cleanupUploadedImages(supabase, uploadedUrls)
+      
+      // Return a fallback response
+      const fallbackResponse: SessionHeartbeatResponse = {
+        success: true,
+        is_drifting: false,
+        drift_reason: 'Analysis service unavailable - assuming focused',
+        actual_task: taskName,
+        user_mood: null,
+        mood_reason: null,
+        message: 'Heartbeat processed but analysis unavailable - assuming focused'
+      }
+
+      // Log drift event with fallback data
+      await supabase
+        .from('drift_events')
+        .insert({
+          session_id: sessionId,
+          user_id: userId,
+          is_drifting: false,
+          drift_reason: 'Analysis service unavailable',
+          actual_task: taskName,
+          user_mood: null,
+          mood_reason: null,
+          intervention_triggered: false
+        })
+
+      return new Response(JSON.stringify(fallbackResponse), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200
+      })
     }
-
-    const difyResult = await difyResponse.json()
-    console.log('🤖 Dify response:', difyResult)
 
     // Parse Dify response
     let analysisResult: DifyResponse
@@ -308,7 +357,7 @@ serve(async (req) => {
     const response: SessionHeartbeatResponse = {
       success: true,
       is_drifting: analysisResult.is_drifting,
-      reason: analysisResult.reasons,
+      drift_reason: analysisResult.reasons,
       actual_task: analysisResult.actual_current_task,
       user_mood: analysisResult.user_mood,
       mood_reason: analysisResult.mood_reason,
