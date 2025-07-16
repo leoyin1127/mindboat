@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 
 interface UsePassiveListeningProps {
   currentSessionId: string | null;
@@ -24,6 +24,18 @@ export const usePassiveListening = ({
   const passiveRecognitionRef = useRef<SpeechRecognition | null>(null);
   const speechDetectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const activeSessionIdRef = useRef<string | null>(null);
+  const isSessionActiveRef = useRef<boolean>(false);
+  const isPassiveListeningRef = useRef<boolean>(false);
+  const shouldContinueListeningRef = useRef<boolean>(false);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    isSessionActiveRef.current = isSessionActive;
+  }, [isSessionActive]);
+
+  useEffect(() => {
+    isPassiveListeningRef.current = isPassiveListening;
+  }, [isPassiveListening]);
 
   const logPassiveSpeech = useCallback(async (transcript: string) => {
     const activeSessionId = activeSessionIdRef.current || currentSessionId;
@@ -169,7 +181,7 @@ export const usePassiveListening = ({
       
       // For recoverable errors, restart after a short delay
       setTimeout(() => {
-        if (isSessionActive && passiveRecognitionRef.current && isPassiveListening) {
+        if (shouldContinueListeningRef.current && activeSessionIdRef.current && passiveRecognitionRef.current) {
           try {
             recognition.start();
             console.log('🔄 Restarted passive recognition after error:', errorType);
@@ -182,12 +194,19 @@ export const usePassiveListening = ({
 
     recognition.onend = () => {
       console.log('🔄 Speech recognition ended, checking if should restart...');
+      console.log('🔍 Current state:', {
+        shouldContinueListening: shouldContinueListeningRef.current,
+        activeSessionId: activeSessionIdRef.current,
+        isSessionActive: isSessionActiveRef.current,
+        isPassiveListening: isPassiveListeningRef.current,
+        hasRecognitionRef: !!passiveRecognitionRef.current
+      });
       
-      // Only restart if session is active and passive listening is enabled
-      if (isSessionActive && isPassiveListening && passiveRecognitionRef.current) {
+      // Only restart if we should continue listening and have an active session
+      if (shouldContinueListeningRef.current && activeSessionIdRef.current && passiveRecognitionRef.current) {
         setTimeout(() => {
           try {
-            if (isSessionActive && isPassiveListening && passiveRecognitionRef.current) {
+            if (shouldContinueListeningRef.current && activeSessionIdRef.current && passiveRecognitionRef.current) {
               recognition.start();
               console.log('✅ Passive recognition restarted after end');
             }
@@ -195,13 +214,15 @@ export const usePassiveListening = ({
             console.warn('Failed to restart passive recognition after end:', error);
             // If restart fails, try again after a longer delay
             setTimeout(() => {
-              if (isSessionActive && isPassiveListening && passiveRecognitionRef.current) {
+              if (shouldContinueListeningRef.current && activeSessionIdRef.current && passiveRecognitionRef.current) {
                 try {
                   recognition.start();
                   console.log('✅ Passive recognition restarted after retry');
                 } catch (retryError) {
                   console.error('Failed to restart passive recognition after retry:', retryError);
                   setIsPassiveListening(false);
+                  isPassiveListeningRef.current = false;
+                  shouldContinueListeningRef.current = false;
                 }
               }
             }, 5000);
@@ -209,6 +230,13 @@ export const usePassiveListening = ({
         }, 500); // Small delay to prevent rapid restarts
       } else {
         console.log('👋 Not restarting passive recognition - session inactive or listening disabled');
+        console.log('🔍 Detailed state:', {
+          shouldContinueListening: shouldContinueListeningRef.current,
+          activeSessionId: activeSessionIdRef.current,
+          isSessionActiveRef: isSessionActiveRef.current,
+          isPassiveListeningRef: isPassiveListeningRef.current,
+          passiveRecognitionRef: !!passiveRecognitionRef.current
+        });
       }
     };
 
@@ -223,8 +251,11 @@ export const usePassiveListening = ({
       return;
     }
 
-    // Store the session ID for later use
+    // Store the session ID and states for later use
     activeSessionIdRef.current = activeSessionId;
+    isSessionActiveRef.current = isSessionActive;
+    isPassiveListeningRef.current = true;
+    shouldContinueListeningRef.current = true;
 
     if (isPassiveListening) {
       console.log('Passive listening already active');
@@ -266,8 +297,11 @@ export const usePassiveListening = ({
       speechDetectionTimeoutRef.current = null;
     }
     
-    // Clear stored session ID
+    // Clear stored session ID and refs
     activeSessionIdRef.current = null;
+    isSessionActiveRef.current = false;
+    isPassiveListeningRef.current = false;
+    shouldContinueListeningRef.current = false;
     
     setIsPassiveListening(false);
     setIsSpeechDetected(false);

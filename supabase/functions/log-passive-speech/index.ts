@@ -139,6 +139,21 @@ Deno.serve(async (req: Request) => {
             )
         }
 
+        // Ensure user exists in goal table (required due to foreign key constraint)
+        const { error: goalError } = await supabase
+            .from('goal')
+            .upsert({
+                user_id: sessionData.user_id,
+                goal_text: 'Default goal for passive speech logging'
+            }, {
+                onConflict: 'user_id'
+            })
+
+        if (goalError) {
+            console.warn('Could not create/update goal entry:', goalError)
+            // Continue anyway - we'll handle the constraint violation below
+        }
+
         // Log the speech to SailingLog table
         const { data: logData, error: logError } = await supabase
             .from('SailingLog')
