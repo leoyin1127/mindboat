@@ -11,8 +11,8 @@
   },
   "dependencies": {
     "@splinetool/react-spline": "^4.0.0",
-    "@stagewise-plugins/react": "^0.5.2",
-    "@stagewise/toolbar-react": "^0.5.2",
+    "@stagewise-plugins/react": "^0.6.0",
+    "@stagewise/toolbar-react": "^0.6.0",
     "@supabase/supabase-js": "^2.39.0",
     "lucide-react": "^0.344.0",
     "react": "^18.3.1",
