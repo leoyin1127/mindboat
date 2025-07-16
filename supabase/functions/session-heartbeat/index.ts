@@ -119,13 +119,15 @@ serve(async (req) => {
       // Simple health check query
       const { data, error } = await supabase.from('_health').select('*').limit(1)
       if (error) {
-        console.warn('Supabase client health check failed:', error.message)
+        console.warn('Supabase client health check failed:', error.message)、
+        throw new Error(error.message)
         // Continue execution as the table might not exist, but client could still be working
       } else {
         console.log('✅ Supabase client initialized successfully')
       }
     } catch (healthCheckError) {
       console.warn('Supabase client health check error:', healthCheckError)
+      throw new Error('Supabase client Health Check Error')
       // Continue execution as this is just a verification step
     }
 
