@@ -10,7 +10,12 @@ interface PermissionStatus {
 interface PermissionPanelProps {
     isVisible: boolean;
     onClose?: () => void;
-    onPermissionsGranted?: (hasAllPermissions: boolean) => void;
+    /**
+     * Callback invoked whenever permission status changes.
+     * @param hasEssentialPermissions – microphone granted
+     * @param screenStream – active screen sharing stream if the user granted it (tracks NOT stopped)
+     */
+    onPermissionsGranted?: (hasEssentialPermissions: boolean, screenStream?: MediaStream) => void;
 }
 
 export const PermissionPanel: React.FC<PermissionPanelProps> = ({
@@ -77,13 +82,58 @@ export const PermissionPanel: React.FC<PermissionPanelProps> = ({
                 });
                 setPermissions(prev => ({ ...prev, microphone: 'granted' }));
             } else if (type === 'camera') {
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 },
-                        frameRate: { ideal: 30 }
+                // Try different constraint sets with fallbacks for better compatibility
+                const constraintSets = [
+                    // Primary: High quality
+                    {
+                        video: {
+                            width: { ideal: 1280, max: 1920 },
+                            height: { ideal: 720, max: 1080 },
+                            frameRate: { ideal: 30, max: 60 }
+                        }
+                    },
+                    // Fallback 1: Medium quality
+                    {
+                        video: {
+                            width: { ideal: 640, max: 1280 },
+                            height: { ideal: 480, max: 720 },
+                            frameRate: { ideal: 15, max: 30 }
+                        }
+                    },
+                    // Fallback 2: Basic quality
+                    {
+                        video: {
+                            width: { ideal: 320, max: 640 },
+                            height: { ideal: 240, max: 480 }
+                        }
+                    },
+                    // Fallback 3: Minimal constraints
+                    {
+                        video: true
                     }
-                });
+                ];
+
+                let lastError = null;
+                for (let i = 0; i < constraintSets.length; i++) {
+                    try {
+                        stream = await navigator.mediaDevices.getUserMedia(constraintSets[i]);
+                        console.log(`✅ Camera permission granted with constraint set ${i + 1}`);
+                        break;
+                    } catch (error) {
+                        lastError = error;
+                        console.warn(`❌ Camera constraint set ${i + 1} failed:`, (error as Error).message);
+                        
+                        // If this is a permission error, don't try other constraints
+                        if ((error as Error).name === 'NotAllowedError' || (error as Error).name === 'PermissionDeniedError') {
+                            throw error;
+                        }
+                    }
+                }
+
+                if (!stream) {
+                    throw lastError || new Error('Failed to start camera with all constraint sets');
+                }
+
                 setPermissions(prev => ({ ...prev, camera: 'granted' }));
             } else if (type === 'screen') {
                 stream = await navigator.mediaDevices.getDisplayMedia({
@@ -96,10 +146,13 @@ export const PermissionPanel: React.FC<PermissionPanelProps> = ({
                 });
                 setPermissions(prev => ({ ...prev, screen: 'granted' }));
                 setHasRequestedScreen(true);
+
+                // Inform parent immediately with the active stream so it can be reused.
+                onPermissionsGranted?.(hasEssentialPermissions, stream);
             }
 
-            // Clean up stream immediately
-            if (stream) {
+            // Clean up stream immediately EXCEPT for screen sharing (parent may reuse it)
+            if (stream && type !== 'screen') {
                 stream.getTracks().forEach(track => track.stop());
             }
 
@@ -162,7 +215,7 @@ export const PermissionPanel: React.FC<PermissionPanelProps> = ({
         }
     }, [isVisible, hasRequestedScreen]);
 
-    // Notify parent about permission status changes
+    // Notify parent about permission status changes (without screen stream)
     useEffect(() => {
         onPermissionsGranted?.(hasEssentialPermissions);
     }, [hasEssentialPermissions, onPermissionsGranted]);
@@ -358,7 +411,7 @@ export const PermissionPanel: React.FC<PermissionPanelProps> = ({
                                                 {getPermissionText(permissions.screen)}
                                             </span>
                                             <span>•</span>
-                                            <span>Activity monitoring & context</span>
+                                            <span>Auto-enabled if granted here</span>
                                         </div>
                                     </div>
                                 </div>

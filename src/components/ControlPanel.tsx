@@ -218,6 +218,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                            transition-all duration-300 z-20
                            shadow-[0_4px_16px_rgba(0,0,0,0.1),0_1px_4px_rgba(0,0,0,0.06)]">
               {isScreenSharing ? 'Stop screen sharing' : 'Start screen sharing'}
+              {!isScreenSharing && <span className="block text-xs text-white/70 mt-1">Auto-enabled if granted in permission panel</span>}
             </span>
           </button>
 

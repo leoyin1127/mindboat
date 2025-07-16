@@ -92,6 +92,8 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [hasPermissions, setHasPermissions] = useState(false);
+  // Reuse screen stream from PermissionPanel without re-prompt
+  // No need for extra boolean – presence of screenStream indicates status
   const [isStartingSession, setIsStartingSession] = useState(false);
 
   // Realtime channel reference
@@ -342,8 +344,23 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   };
 
   // Handle permission panel completion
-  const handlePermissionsGranted = (hasEssentialPermissions: boolean) => {
+  const handlePermissionsGranted = (
+    hasEssentialPermissions: boolean,
+    incomingScreenStream?: MediaStream
+  ) => {
     setHasPermissions(hasEssentialPermissions);
+
+    // If we receive a screen stream from the permission panel, reuse it immediately
+    if (incomingScreenStream && !screenStream) {
+      console.log('🖥️ Reusing screen stream from permission panel');
+      setScreenStream(incomingScreenStream);
+      screenStreamRef.current = incomingScreenStream;
+      setIsScreenSharing(true);
+      if (screenRef.current) {
+        screenRef.current.srcObject = incomingScreenStream;
+      }
+    }
+
     if (hasEssentialPermissions) {
       setSessionError(null);
       // Don't auto-start here - let the permission panel handle it via onClose
@@ -363,25 +380,160 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
           videoRef.current.srcObject = null;
         }
         console.log('Video turned off');
-      } else {
-        // Turn on video
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          }
-        });
-        setVideoStream(stream);
-        videoStreamRef.current = stream;
-        setIsVideoOn(true);
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-        console.log('Video turned on');
+        return;
       }
+
+      // Guard against duplicate requests
+      if (videoStream && videoStream.active) {
+        console.log('Camera already active, skipping initialization');
+        return;
+      }
+
+      console.log('🎥 Attempting to start camera...');
+      
+      // First, try to clean up any existing video tracks globally
+      try {
+        const existingTracks = [];
+        if (videoStream) {
+          existingTracks.push(...videoStream.getVideoTracks());
+        }
+        existingTracks.forEach(track => {
+          console.log('🔄 Stopping existing video track:', track.label);
+          track.stop();
+        });
+        
+        // Small delay to allow hardware cleanup
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (cleanupError) {
+        console.warn('Warning during video cleanup:', cleanupError);
+      }
+      
+      // Try different constraint sets with fallbacks
+      const constraintSets = [
+        // Primary: High quality
+        {
+          video: {
+            width: { ideal: 1280, max: 1920 },
+            height: { ideal: 720, max: 1080 },
+            frameRate: { ideal: 30, max: 60 }
+          }
+        },
+        // Fallback 1: Medium quality
+        {
+          video: {
+            width: { ideal: 640, max: 1280 },
+            height: { ideal: 480, max: 720 },
+            frameRate: { ideal: 15, max: 30 }
+          }
+        },
+        // Fallback 2: Basic quality
+        {
+          video: {
+            width: { ideal: 320, max: 640 },
+            height: { ideal: 240, max: 480 }
+          }
+        },
+        // Fallback 3: Minimal constraints
+        {
+          video: true
+        }
+      ];
+
+      let stream = null;
+      let lastError = null;
+
+            for (let i = 0; i < constraintSets.length; i++) {
+        try {
+          console.log(`🎥 Trying camera constraints set ${i + 1}/${constraintSets.length}...`);
+          
+          // Add a small delay between attempts to allow hardware reset
+          if (i > 0) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+          }
+          
+          stream = await navigator.mediaDevices.getUserMedia(constraintSets[i]);
+          console.log(`✅ Camera started successfully with constraint set ${i + 1}`);
+          
+          // Log camera details for debugging
+          const videoTrack = stream.getVideoTracks()[0];
+          if (videoTrack) {
+            const settings = videoTrack.getSettings();
+            console.log(`📹 Camera details: ${videoTrack.label}, ${settings.width}x${settings.height}@${settings.frameRate}fps`);
+          }
+          
+          break;
+        } catch (error) {
+          const err = error as Error;
+          lastError = err;
+          console.warn(`❌ Constraint set ${i + 1} failed:`, err.message);
+          console.warn(`❌ Error type: ${err.name}, Error code:`, (err as any).constraint);
+          
+          // If this is a permission error, don't try other constraints
+          if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+            throw err;
+          }
+          
+          // For NotReadableError, try to diagnose the issue
+          if (err.name === 'NotReadableError') {
+            console.warn('🔍 Camera may be in use by another application or locked by the OS');
+            console.warn('🔍 Try closing other applications that might use the camera');
+          }
+        }
+      }
+
+      if (!stream) {
+        throw lastError || new Error('Failed to start camera with all constraint sets');
+      }
+
+      // Verify stream is actually working
+      const videoTrack = stream.getVideoTracks()[0];
+      if (!videoTrack || videoTrack.readyState !== 'live') {
+        stream.getTracks().forEach(track => track.stop());
+        throw new Error('Camera stream is not live');
+      }
+
+      setVideoStream(stream);
+      videoStreamRef.current = stream;
+      setIsVideoOn(true);
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+
+      console.log('✅ Camera turned on successfully');
+      
     } catch (error) {
-      console.error('Error toggling video:', error);
-      setSessionError('Failed to access camera. Please check permissions.');
+      const err = error as Error;
+      console.error('❌ Error toggling video:', err);
+      
+      // Provide specific error messages based on error type
+      let errorMessage = 'Failed to access camera. ';
+      
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        errorMessage += 'Please allow camera access in your browser settings.';
+      } else if (err.name === 'NotFoundError') {
+        errorMessage += 'No camera found on this device.';
+      } else if (err.name === 'NotReadableError') {
+        errorMessage += 'Camera is unavailable. This usually means:\n';
+        errorMessage += '• Another application is using the camera (close other video apps)\n';
+        errorMessage += '• Camera hardware issue (try restarting your browser)\n';
+        errorMessage += '• OS-level camera restrictions\n';
+        errorMessage += 'The session will continue without camera monitoring.';
+      } else if (err.name === 'OverconstrainedError') {
+        errorMessage += 'Camera does not support the required settings.';
+      } else {
+        errorMessage += `Please check your camera settings. Error: ${err.message}`;
+      }
+      
+      setSessionError(errorMessage);
+      
+      // Reset video state on error
+      setIsVideoOn(false);
+      setVideoStream(null);
+      videoStreamRef.current = null;
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
     }
   };
 
@@ -473,6 +625,9 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
 
     // Stop passive listening
     stopPassiveListening();
+
+    // Reset screen sharing permission tracking
+    // setScreenSharingGrantedInPermissionPanel(false); // No longer needed
 
     console.log('All media streams cleaned up');
   };
@@ -1011,28 +1166,40 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
         // Continue with session even if microphone fails
       }
 
-      // Step 3.5: Initialize camera stream for heartbeat monitoring
+      // Step 3.5: Initialize camera stream for heartbeat monitoring (only if not already on)
       if (!isVideoOn && !videoStream) {
         try {
-          console.log('Initializing camera for heartbeat monitoring...');
+          console.log('🎥 Checking camera availability for session...');
+          // Try to initialize camera without forcing permission prompt
+          // This will only work if permission was already granted during onboarding
           await toggleVideo();
-          console.log('Camera initialized for session');
+          console.log('✅ Camera initialized for session');
         } catch (cameraError) {
-          console.warn('Could not initialize camera for session:', cameraError);
-          // Continue with session even if camera fails
+          const err = cameraError as Error;
+          console.warn('⚠️ Camera not available for session:', err.message);
+          console.log('ℹ️ Session continuing without camera - focus monitoring will use screen sharing only');
+          console.log('ℹ️ Camera can be enabled manually via control panel if needed');
+          
+          // Clear any error state since camera is optional
+          setSessionError(null);
         }
       }
 
-      // Step 3.6: Initialize screen sharing for heartbeat monitoring
-      if (!isScreenSharing && !screenStream) {
+      // Step 3.6: Initialize screen sharing for heartbeat monitoring (only if not already sharing)
+      // Step 4: Initialize screen sharing if granted in PermissionPanel
+      if (screenStream && !isScreenSharing) {
         try {
-          console.log('Initializing screen sharing for heartbeat monitoring...');
+          console.log('🖥️ Auto-enabling screen sharing (granted in permission panel)...');
           await toggleScreenShare();
-          console.log('Screen sharing initialized for session');
+          console.log('✅ Screen sharing auto-enabled for session');
         } catch (screenError) {
-          console.warn('Could not initialize screen sharing for session:', screenError);
-          // Continue with session even if screen sharing fails
+          const err = screenError as Error;
+          console.warn('⚠️ Screen sharing auto-enable failed:', err.message);
+          console.log('ℹ️ Screen sharing still available via control panel');
+          // Continue with session - screen sharing is optional
         }
+      } else {
+        console.log('ℹ️ Screen sharing not granted in permission panel - available via control panel');
       }
 
       // Step 4: Trigger Spline animation
@@ -1573,16 +1740,17 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
         isLoading={isLoadingSummary}
       />
 
-      {/* Permission Panel - for requesting media permissions */}
+      {/* Permission Panel */}
       <PermissionPanel
         isVisible={showPermissionPanel}
         onClose={() => {
           setShowPermissionPanel(false);
-          // Only start session if we have permissions and no session is active
+          // Auto-start session if essential permissions are granted
           if (hasPermissions && !isSessionActive && !isStartingSession) {
+            console.log('Essential permissions granted, auto-starting session...');
             setTimeout(() => {
               startSailingSession();
-            }, 200);
+            }, 500); // Small delay to allow panel to close smoothly
           }
         }}
         onPermissionsGranted={handlePermissionsGranted}
