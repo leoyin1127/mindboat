@@ -105,9 +105,29 @@ serve(async (req) => {
 
   try {
     // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabaseUrl = Deno.env.get('VITE_SUPABASE_URL')
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Supabase configuration missing')
+    }
+    
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
+    
+    // Verify Supabase client is initialized correctly
+    try {
+      // Simple health check query
+      const { data, error } = await supabase.from('_health').select('*').limit(1)
+      if (error) {
+        console.warn('Supabase client health check failed:', error.message)
+        // Continue execution as the table might not exist, but client could still be working
+      } else {
+        console.log('✅ Supabase client initialized successfully')
+      }
+    } catch (healthCheckError) {
+      console.warn('Supabase client health check error:', healthCheckError)
+      // Continue execution as this is just a verification step
+    }
 
     // Get Dify API configuration
     const difyApiUrl = Deno.env.get('DIFY_API_URL')
@@ -169,25 +189,29 @@ serve(async (req) => {
     const taskDescription = sessionData.tasks?.description || ''
     const userId = sessionData.user_id
 
-    console.log('📋 Session context:', { userGoal, taskName, sessionId })
+    console.log('📋 Step 1: Session context:', { userGoal, taskName, sessionId })
 
     // Step 2: Upload images to Supabase Storage and get public URLs
     const uploadPromises: Promise<string | null>[] = []
     if (cameraImage) {
+      console.log('Uploading camera image')
       uploadPromises.push(uploadImageToStorage(supabase, cameraImage, `user_${userId}`, 'camera'))
     } else {
+      console.log('No camera image')
       uploadPromises.push(Promise.resolve(null))
     }
     
     if (screenImage) {
+      console.log('Uploading screen image')
       uploadPromises.push(uploadImageToStorage(supabase, screenImage, `user_${userId}`, 'screen'))
     } else {
+      console.log('No screen image')
       uploadPromises.push(Promise.resolve(null))
     }
 
     const [cameraImageUrl, screenImageUrl] = await Promise.all(uploadPromises)
     
-    console.log('📤 Images uploaded to storage:', { cameraImageUrl, screenImageUrl })
+    console.log('📤 Step 2: Images uploaded to storage:', { cameraImageUrl, screenImageUrl })
 
     // Check if we have any valid uploads
     if (!cameraImageUrl && !screenImageUrl) {
@@ -238,7 +262,7 @@ serve(async (req) => {
       user: `user_${userId}`
     }
 
-    console.log('🤖 Calling Dify API with payload:', JSON.stringify(difyPayload, null, 2))
+    console.log('🤖 Step 3: Calling Dify API with payload:', JSON.stringify(difyPayload, null, 2))
 
     let difyResult
     let uploadedUrls = [cameraImageUrl, screenImageUrl].filter((url): url is string => Boolean(url))
