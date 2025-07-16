@@ -1,5 +1,6 @@
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState, useRef } from 'react';
 import Spline from '@splinetool/react-spline';
+import type { Application } from '@splinetool/runtime';
 
 interface SplineSceneProps {
   isInteractionDisabled?: boolean;
@@ -10,6 +11,7 @@ export const SplineScene: React.FC<SplineSceneProps> = ({
 }) => {
   const [key, setKey] = useState(0);
   const [sceneUrl, setSceneUrl] = useState('');
+  const splineRef = useRef<Application | null>(null);
 
   useEffect(() => {
     // 添加时间戳参数强制刷新
@@ -29,11 +31,71 @@ export const SplineScene: React.FC<SplineSceneProps> = ({
     }, 2000);
   };
 
-  const handleSplineLoad = () => {
+  const handleSplineLoad = (splineApp: Application) => {
     console.log('Spline scene loaded successfully at:', new Date().toLocaleTimeString());
+    splineRef.current = splineApp;
+    
+    // 监听 Spline 场景中的鼠标事件
+    splineApp.addEventListener('mouseDown', async (e) => {
+      console.log('Spline mouseDown event:', e);
+      
+      // 检查点击的对象名称
+      if (e.target && e.target.name) {
+        console.log('Clicked object name:', e.target.name);
+        
+        // 根据不同的对象名称调用不同的云函数
+        // 这里需要根据你的 Spline 场景中按钮的实际名称来修改
+        let webhookUrl = '';
+        let payload = {};
+        
+        // 示例：根据按钮名称决定调用哪个云函数
+        if (e.target.name.toLowerCase().includes('goal') || 
+            e.target.name.toLowerCase().includes('button1')) {
+          webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/goals-webhook`;
+          payload = { number: 1 };
+        } else if (e.target.name.toLowerCase().includes('welcome') ||
+                   e.target.name.toLowerCase().includes('boat') || // <--- 在这里添加对 'boat' 的检查
+                   e.target.name.toLowerCase().includes('button2')) {
+          webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/welcome-webhook`;
+          payload = { number: 2 };
+        } else if (e.target.name.toLowerCase().includes('journey') || 
+                   e.target.name.toLowerCase().includes('button3')) {
+          webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/journey-webhook`;
+          payload = { number: 3 };
+        } else if (e.target.name.toLowerCase().includes('seagull') || 
+                   e.target.name.toLowerCase().includes('button5')) {
+          webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/seagull-webhook`;
+          payload = { numbaer5: 0 };
+        }
+        
+        // 如果找到了对应的 webhook，就发送请求
+        if (webhookUrl) {
+          try {
+            console.log(`Calling webhook: ${webhookUrl} with payload:`, payload);
+            
+            const response = await fetch(webhookUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              },
+              body: JSON.stringify(payload)
+            });
+            
+            if (response.ok) {
+              const data = await response.json();
+              console.log('Webhook response:', data);
+            } else {
+              console.error('Webhook call failed:', response.status, response.statusText);
+            }
+          } catch (error) {
+            console.error('Error calling webhook:', error);
+          }
+        }
+      }
+    });
   };
 
-  // 强制刷新函数
   const forceRefresh = () => {
     setKey(prev => prev + 1);
     const timestamp = Date.now();
@@ -51,14 +113,6 @@ export const SplineScene: React.FC<SplineSceneProps> = ({
 
   return (
     <div className="fixed inset-0 z-0">
-      {/* 刷新按钮 - 用于调试 */}
-      <button
-        onClick={forceRefresh}
-        className="fixed top-4 right-4 z-50 bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg backdrop-blur-sm border border-white/20 transition-all duration-200"
-      >
-        刷新场景
-      </button>
-
       {/* 交互禁用遮罩层 - 当模态框打开时阻止Spline交互 */}
       {isInteractionDisabled && (
         <div 
@@ -99,7 +153,7 @@ export const SplineScene: React.FC<SplineSceneProps> = ({
           }}
         >
           <Spline
-            key={key} // 使用key强制重新渲染
+            key={key}
             scene={sceneUrl}
             style={{ width: '100%', height: '100%' }}
             onLoad={handleSplineLoad}
