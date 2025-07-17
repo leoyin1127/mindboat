@@ -54,6 +54,46 @@ Deno.serve(async (req: Request) => {
     } catch (e) {
       console.warn('Could not parse JSON payload, proceeding with empty payload.', e.message)
     }
+
+    // Try to get user_id from multiple sources
+    let user_id = payload.user_id
+    
+    console.log('🔍 Payload user_id:', user_id)
+    console.log('🔍 Headers x-user-id:', req.headers.get('x-user-id'))
+    
+    // If not provided in payload, try to extract from headers or other sources
+    if (!user_id) {
+      // Option 1: From custom header
+      user_id = req.headers.get('x-user-id')
+      console.log('📥 No user_id in payload, extracted from headers:', user_id)
+    }
+    
+    // Option 2: Get the most recent active user from the database
+    if (!user_id) {
+      console.log('🔍 No user_id found, trying to get most recent active user...')
+      try {
+        const { data: recentUser, error } = await supabase
+          .from('users')
+          .select('id')
+          .order('last_seen', { ascending: false })
+          .limit(1)
+          .single()
+        
+        if (!error && recentUser) {
+          user_id = recentUser.id
+          console.log('📥 Using most recent active user:', user_id)
+        }
+      } catch (e) {
+        console.log('❌ Could not fetch recent user:', e.message)
+      }
+    }
+    
+    // Final check
+    if (!user_id) {
+      console.warn('⚠️ No user_id found in payload, headers, or database!')
+    } else {
+      console.log('✅ Using user_id:', user_id)
+    }
     
     // Define the event name and the data for the frontend
     const eventName = 'show_welcome_modal'
@@ -66,16 +106,20 @@ Deno.serve(async (req: Request) => {
       originalPayload: payload
     }
 
-    console.log(`Inserting event '${eventName}' into 'frontend_events' table.`)
+    console.log(`Inserting event '${eventName}' into 'frontend_events' table with user_id: ${user_id}`)
 
     // Insert a record into the 'frontend_events' table.
+    const insertData = {
+      event_name: eventName,
+      event_data: eventData,
+      user_id: user_id, // Use extracted user_id
+    }
+    
+    console.log('📝 Insert data:', insertData)
+    
     const { data, error } = await supabase
       .from('frontend_events')
-      .insert({
-        event_name: eventName,
-        event_data: eventData,
-        user_id: payload.user_id, // Include user_id from payload
-      })
+      .insert(insertData)
       .select()
 
     // Handle potential errors during insertion

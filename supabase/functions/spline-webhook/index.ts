@@ -22,10 +22,38 @@ Deno.serve(async (req)=>{
     }
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     // Parse the incoming JSON payload from the request
-    const payload = await req.json();
-    console.log('Received Spline webhook with payload:', payload);
+    const rawPayload = await req.json();
+    console.log('Received Spline webhook with raw payload:', rawPayload);
+    
+    // Extract actual data from rich text format if needed
+    let payload: any = {};
+    let user_id: string | null = null;
+    
+    // Check if payload is in rich text format (array with children)
+    if (Array.isArray(rawPayload) && rawPayload[0]?.children?.[0]?.text) {
+      console.log('Detected rich text format, extracting JSON...');
+      try {
+        const jsonString = rawPayload[0].children[0].text;
+        payload = JSON.parse(jsonString);
+        console.log('Extracted payload from rich text:', payload);
+      } catch (e) {
+        console.warn('Failed to parse JSON from rich text, using default');
+        payload = { number: 1 }; // Default to goals
+      }
+    } else if (typeof rawPayload === 'object' && rawPayload !== null) {
+      // Normal JSON format
+      payload = rawPayload;
+      console.log('Using normal payload format');
+    } else {
+      console.warn('Unknown payload format, using default');
+      payload = { number: 1 }; // Default to goals
+    }
+    
+    // Extract user_id from payload or try to get from headers/context
+    user_id = payload.user_id || null;
+    console.log('Extracted user_id:', user_id);
+    
     // --- Logic to determine which modal to show ---
-    // This section uses the detailed logic from your non-working code.
     let eventName = 'show_modal_default';
     let modalType = 'goals'; // Default to 'goals'
     let message = '人生目标设定';
@@ -57,7 +85,7 @@ Deno.serve(async (req)=>{
     .insert({
       event_name: eventName,
       event_data: eventData,
-      user_id: payload.user_id // Include user_id from payload
+      user_id: user_id // Include extracted user_id
     }).select();
     // Handle potential errors during insertion
     if (error) {

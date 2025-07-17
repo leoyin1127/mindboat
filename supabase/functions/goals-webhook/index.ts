@@ -55,8 +55,12 @@ Deno.serve(async (req: Request) => {
       console.log('No JSON payload or invalid JSON, continuing with empty payload')
     }
 
+    // Extract user_id from payload
+    const user_id = payload.user_id
+    
     console.log('=== GOALS WEBHOOK CALLED ===')
     console.log('Payload received:', JSON.stringify(payload, null, 2))
+    console.log('User ID:', user_id)
     console.log('Timestamp:', new Date().toISOString())
 
     // Initialize Supabase client
@@ -76,10 +80,12 @@ Deno.serve(async (req: Request) => {
         message: 'Life Goal Setting',
         apiEndpoint: 'goals-webhook',
         timestamp: new Date().toISOString(),
-        source: 'goals-webhook'
+        source: 'goals-webhook',
+        user_id: user_id // Explicitly include user_id
       },
       timestamp: new Date().toISOString(),
-      source: 'spline'
+      source: 'spline',
+      user_id: user_id // Also include at top level for easy access
     }
 
     console.log('=== BROADCASTING GOALS EVENT ===')

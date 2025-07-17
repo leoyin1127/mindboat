@@ -1,17 +1,19 @@
 import React, { useState } from 'react';
 import { Heart } from 'lucide-react';
-import { auth } from '../lib/auth';
+import { auth, AnonymousUser } from '../lib/auth';
 
 interface LifeGoalsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (goal: string) => void;
+  currentUser?: AnonymousUser | null;
 }
 
 export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
   isOpen,
   onClose,
-  onSubmit
+  onSubmit,
+  currentUser
 }) => {
   const [goal, setGoal] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -19,6 +21,14 @@ export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
   const sendSplineWebhook = async () => {
     try {
       console.log('Sending Spline webhook via backend proxy...');
+      console.log('🔍 Current user in LifeGoalsModal:', currentUser);
+      console.log('🔍 User ID being sent:', currentUser?.id);
+
+      const payload = { 
+        number: 0,
+        user_id: currentUser?.id 
+      };
+      console.log('🔍 Full payload being sent:', payload);
 
       // Call our backend proxy instead of Spline directly
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/spline-proxy`, {
@@ -27,7 +37,7 @@ export const LifeGoalsModal: React.FC<LifeGoalsModalProps> = ({
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
-        body: JSON.stringify({ number: 0 })
+        body: JSON.stringify(payload)
       });
 
       if (response.ok) {
