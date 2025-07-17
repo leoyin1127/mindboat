@@ -9,9 +9,19 @@ ADD COLUMN IF NOT EXISTS user_id UUID,
 ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
 
 -- Step 2: Add foreign key constraint to users table
-ALTER TABLE frontend_events 
-ADD CONSTRAINT IF NOT EXISTS frontend_events_user_id_fkey 
-FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+DO $$ 
+BEGIN
+    -- Check if the constraint doesn't exist and add it
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = 'frontend_events_user_id_fkey' 
+        AND table_name = 'frontend_events'
+    ) THEN
+        ALTER TABLE frontend_events 
+        ADD CONSTRAINT frontend_events_user_id_fkey 
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+    END IF;
+END $$;
 
 -- Step 3: Drop the old primary key constraint on event_data (if it exists)
 -- We need to handle this carefully since it might not exist
@@ -28,8 +38,18 @@ BEGIN
 END $$;
 
 -- Step 4: Add new primary key on id column
-ALTER TABLE frontend_events 
-ADD CONSTRAINT frontend_events_pkey PRIMARY KEY (id);
+DO $$ 
+BEGIN
+    -- Check if the primary key doesn't exist and add it
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = 'frontend_events_pkey' 
+        AND table_name = 'frontend_events'
+    ) THEN
+        ALTER TABLE frontend_events 
+        ADD CONSTRAINT frontend_events_pkey PRIMARY KEY (id);
+    END IF;
+END $$;
 
 -- Step 5: Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_frontend_events_user_id ON frontend_events(user_id);
