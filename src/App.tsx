@@ -167,7 +167,9 @@ function App() {
                   'Content-Type': 'application/json',
                   'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
                 },
-                body: JSON.stringify({})
+                body: JSON.stringify({
+                  user_id: currentUser?.id
+                })
               });
 
               if (response.ok) {

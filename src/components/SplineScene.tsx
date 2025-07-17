@@ -54,7 +54,6 @@ export const SplineScene: React.FC<SplineSceneProps> = ({
           webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/goals-webhook`;
           payload = { number: 1 };
         } else if (e.target.name.toLowerCase().includes('welcome') ||
-                   e.target.name.toLowerCase().includes('boat') || // <--- 在这里添加对 'boat' 的检查
                    e.target.name.toLowerCase().includes('button2')) {
           webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/welcome-webhook`;
           payload = { number: 2 };

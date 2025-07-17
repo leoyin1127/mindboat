@@ -19,6 +19,7 @@ const corsHeaders = {
 }
 
 interface WelcomeWebhookPayload {
+  user_id?: string;
   [key: string]: any;
 }
 
@@ -73,6 +74,7 @@ Deno.serve(async (req: Request) => {
       .insert({
         event_name: eventName,
         event_data: eventData,
+        user_id: payload.user_id, // Include user_id from payload
       })
       .select()
 
