@@ -2,6 +2,7 @@ import React from 'react';
 import { SplineScene } from './components/SplineScene';
 import { SplineEventHandler } from './components/SplineEventHandler';
 import { auth, type AnonymousUser } from './lib/auth';
+import { webhookClient } from './lib/webhookClient';
 import { StagewiseToolbar } from '@stagewise/toolbar-react';
 import ReactPlugin from '@stagewise-plugins/react';
 
@@ -110,7 +111,7 @@ function App() {
       )}
 
       {/* 3D Scene Background - 传递交互禁用状态 */}
-      <SplineScene isInteractionDisabled={isModalOpen} />
+      <SplineScene isInteractionDisabled={isModalOpen} currentUser={currentUser} />
 
       {/* Spline Event Handler - handles real-time events from Spline */}
       <SplineEventHandler

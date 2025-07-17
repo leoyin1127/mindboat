@@ -84,13 +84,19 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
           console.log('Event data:', eventData)
           console.log('Event user_id:', eventUserId)
           
+          // Frontend event injection - fix null user_id by using current user context
+          if (!eventUserId && currentUser?.id) {
+            eventUserId = currentUser.id
+            console.log('🔧 Injected user_id from frontend context:', eventUserId)
+          }
+          
           // Filter events by current user to prevent cross-user modal triggers
           if (eventUserId && currentUser?.id && eventUserId !== currentUser.id) {
             console.log('🚫 Ignoring event for different user:', eventUserId)
             return
           }
           
-          // If no user_id in event but we have a current user, also ignore (for safety)
+          // If still no user_id after injection, ignore for safety
           if (!eventUserId && currentUser?.id) {
             console.log('🚫 Ignoring event without user_id when user is logged in')
             return
@@ -167,8 +173,69 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
         }
       })
 
+    // Also subscribe to broadcast events from spline-events channel
+    const broadcastChannel = supabase
+      .channel('spline-events')
+      .on('broadcast', { event: 'spline_interaction' }, (payload) => {
+        console.log('=== RECEIVED BROADCAST EVENT ===')
+        console.log('Broadcast payload:', payload)
+        
+        const eventData = payload.payload
+        const eventUserId = payload.payload?.user_id || eventData?.user_id
+        
+        console.log('Broadcast event data:', eventData)
+        console.log('Broadcast user_id:', eventUserId)
+        
+        // Filter events by current user
+        if (eventUserId && currentUser?.id && eventUserId !== currentUser.id) {
+          console.log('🚫 Ignoring broadcast event for different user:', eventUserId)
+          return
+        }
+        
+        if (!eventUserId && currentUser?.id) {
+          console.log('🚫 Ignoring broadcast event without user_id when user is logged in')
+          return
+        }
+        
+        // Handle broadcast events - check both top level and payload level
+        const uiAction = eventData?.uiAction || eventData?.payload?.uiAction
+        const modalType = eventData?.modalType || eventData?.payload?.modalType
+        const eventType = eventData?.type
+        
+        console.log('🔍 Checking broadcast conditions:', { uiAction, modalType, eventType })
+        
+        if (uiAction === 'show_goals' || modalType === 'goals' || eventType === 'spline_goals_trigger') {
+          console.log('📢 Broadcast: Showing goals modal')
+          setShowLifeGoalsModal(true)
+        } else if (uiAction === 'show_journey' || modalType === 'journey' || eventType === 'spline_journey_trigger') {
+          console.log('📢 Broadcast: Showing journey panel')
+          setShowJourneyPanel(true)
+        } else if (uiAction === 'show_seagull' || modalType === 'seagull' || eventType === 'spline_seagull_trigger') {
+          console.log('📢 Broadcast: Showing seagull panel')
+          setShowSeagullPanel(true)
+        } else {
+          console.log('❓ No matching broadcast condition found for:', { uiAction, modalType, eventType })
+        }
+        
+        // Create compatible event for callback
+        const event: SplineEvent = {
+          type: eventData?.uiAction || 'broadcast_event',
+          payload: eventData || {},
+          timestamp: new Date().toISOString(),
+          source: 'broadcast'
+        }
+        onEventReceived?.(event)
+      })
+      .subscribe((status) => {
+        console.log('Broadcast subscription status:', status)
+        if (status === 'SUBSCRIBED') {
+          console.log('Successfully subscribed to spline-events broadcast')
+        }
+      })
+
     return () => {
       supabase.removeChannel(channel)
+      supabase.removeChannel(broadcastChannel)
     }
   }, [onEventReceived, currentUser])
 
@@ -260,6 +327,7 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
         isOpen={showLifeGoalsModal}
         onClose={() => setShowLifeGoalsModal(false)}
         onSubmit={handleLifeGoalSubmit}
+        currentUser={currentUser}
       />
 
       {/* Welcome Panel - Left side fixed position */}

@@ -1,13 +1,16 @@
 import React, { Suspense, useEffect, useState, useRef } from 'react';
 import Spline from '@splinetool/react-spline';
 import type { Application } from '@splinetool/runtime';
+import { AnonymousUser } from '../lib/auth';
 
 interface SplineSceneProps {
   isInteractionDisabled?: boolean;
+  currentUser?: AnonymousUser | null;
 }
 
 export const SplineScene: React.FC<SplineSceneProps> = ({ 
-  isInteractionDisabled = false 
+  isInteractionDisabled = false,
+  currentUser
 }) => {
   const [key, setKey] = useState(0);
   const [sceneUrl, setSceneUrl] = useState('');
@@ -48,23 +51,44 @@ export const SplineScene: React.FC<SplineSceneProps> = ({
         let webhookUrl = '';
         let payload = {};
         
-        // 示例：根据按钮名称决定调用哪个云函数
-        if (e.target.name.toLowerCase().includes('goal') || 
-            e.target.name.toLowerCase().includes('button1')) {
+        // Map Spline object names to webhooks
+        const objectName = e.target.name;
+        const lowerName = objectName.toLowerCase();
+        
+        // Goals webhook mappings (A1, D3.1)
+        if (lowerName.includes('goal') || 
+            lowerName.includes('button1') ||
+            objectName === 'A1' || objectName === 'D3.1' || objectName === 'Goals') {
           webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/goals-webhook`;
-          payload = { number: 1 };
-        } else if (e.target.name.toLowerCase().includes('welcome') ||
-                   e.target.name.toLowerCase().includes('button2')) {
+          payload = { number: 1, user_id: currentUser?.id };
+        } 
+        // Welcome webhook mappings (A3 only)
+        else if (lowerName.includes('welcome') ||
+                 lowerName.includes('button2') ||
+                 objectName === 'A3' || objectName === 'Welcome') {
           webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/welcome-webhook`;
-          payload = { number: 2 };
-        } else if (e.target.name.toLowerCase().includes('journey') || 
-                   e.target.name.toLowerCase().includes('button3')) {
+          payload = { number: 2, user_id: currentUser?.id };
+        } 
+        // Journey webhook mappings (A4)
+        else if (lowerName.includes('journey') || 
+                 lowerName.includes('button3') ||
+                 objectName === 'A4' || objectName === 'Journey' || objectName === 'Start') {
           webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/journey-webhook`;
-          payload = { number: 3 };
-        } else if (e.target.name.toLowerCase().includes('seagull') || 
-                   e.target.name.toLowerCase().includes('button5')) {
+          payload = { number: 3, user_id: currentUser?.id };
+        } 
+        // Seagull webhook mappings (A5)
+        else if (lowerName.includes('seagull') || 
+                 lowerName.includes('button5') ||
+                 objectName === 'A5' || objectName === 'Seagull' || objectName === 'Bird') {
           webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/seagull-webhook`;
-          payload = { numbaer5: 0 };
+          payload = { numbaer5: 0, user_id: currentUser?.id };
+        }
+        
+        // Log the mapping result
+        if (webhookUrl) {
+          console.log(`✅ Mapped "${objectName}" to webhook: ${webhookUrl.split('/').pop()}`);
+        } else {
+          console.log(`❌ No webhook mapping found for object: "${objectName}"`);
         }
         
         // 如果找到了对应的 webhook，就发送请求
