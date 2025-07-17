@@ -4,7 +4,10 @@
 -- Backup existing data if needed (optional)
 -- CREATE TABLE drift_events_backup AS SELECT * FROM drift_events;
 
--- Drop and recreate the drift_events table with new schema
+-- Step 1: Drop foreign key constraints that depend on drift_events
+ALTER TABLE ai_conversations DROP CONSTRAINT IF EXISTS ai_conversations_drift_event_id_fkey;
+
+-- Step 2: Drop and recreate the drift_events table with new schema
 DROP TABLE IF EXISTS drift_events;
 
 CREATE TABLE drift_events (
@@ -39,6 +42,11 @@ FOR ALL USING (auth.role() = 'service_role');
 
 CREATE POLICY "Anonymous users can manage drift events" ON drift_events
 FOR ALL USING (true); -- For now, allow all access for anonymous auth
+
+-- Step 3: Re-add foreign key constraint to ai_conversations table
+ALTER TABLE ai_conversations 
+ADD CONSTRAINT ai_conversations_drift_event_id_fkey 
+FOREIGN KEY (drift_event_id) REFERENCES drift_events(id) ON DELETE SET NULL;
 
 -- Add helpful comment
 COMMENT ON TABLE drift_events IS 'Per-minute focus monitoring log for distraction detection system';
