@@ -14,6 +14,16 @@ interface DifyResponse {
   mood_reason?: string | null;
 }
 
+interface DifyFileUploadResponse {
+  id: string;
+  name: string;
+  size: number;
+  extension: string;
+  mime_type: string;
+  created_by: string;
+  created_at: number;
+}
+
 interface SessionHeartbeatResponse {
   success: boolean;
   is_drifting: boolean;
@@ -32,70 +42,121 @@ function dataUrlToBlob(dataUrl: string): Blob {
   return new Blob([bytes], { type: mime })
 }
 
-// Helper function to upload image to Supabase Storage and return public URL
-async function uploadImageToStorage(
-  supabase: any, 
-  imageB64: string, 
-  userId: string, 
-  type: 'camera' | 'screen'
-): Promise<string | null> {
+// NEW: Helper function to upload image directly to Dify
+async function uploadImageToDify(
+  imageB64: string,
+  userId: string,
+  type: 'camera' | 'screen',
+  difyApiUrl: string,
+  difyApiKey: string
+): Promise<DifyFileUploadResponse | null> {
   try {
-    // 1. Convert base64 Data URL to a Blob (reusing existing dataUrlToBlob)
+    // 1. Convert base64 Data URL to a Blob
     const imageBlob = dataUrlToBlob(imageB64)
     
-    console.log(`📤 Uploading ${type} image to storage - Size: ${(imageBlob.size / 1024 / 1024).toFixed(2)} MB`)
+    console.log(`📤 Uploading ${type} image to Dify - Size: ${(imageBlob.size / 1024 / 1024).toFixed(2)} MB`)
     
     // Size guard - reject if over 3 MB
     if (imageBlob.size > 3 * 1024 * 1024) {
       throw new Error(`Image too large: ${(imageBlob.size / 1024 / 1024).toFixed(2)} MB (max 3 MB)`)
     }
     
-    // 2. Define a unique, organized file path
-    const filePath = `${userId}/${type}-${Date.now()}.png`
+    // 2. Construct the Dify file upload URL
+    const uploadUrl = `${difyApiUrl.replace(/\/$/, '')}/files/upload`
+    
+    // 3. Create FormData with the image and user identifier
+    const formData = new FormData()
+    formData.append('file', imageBlob, `${type}-${Date.now()}.png`)
+    formData.append('user', `user_${userId}`)
 
-    // 3. Upload the file to Supabase Storage
-    const { error: uploadError } = await supabase.storage
-      .from('heartbeat-images')
-      .upload(filePath, imageBlob)
+    // 4. Upload to Dify
+    const response = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${difyApiKey}`
+      },
+      body: formData
+    })
 
-    if (uploadError) {
-      console.error(`Storage upload failed for ${type}:`, uploadError)
-      return null
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Dify file upload failed (${response.status}): ${errorText}`)
     }
 
-    // 4. Get the public URL of the successfully uploaded file
-    const { data } = supabase.storage
-      .from('heartbeat-images')
-      .getPublicUrl(filePath)
-      
-    console.log(`✅ ${type} image uploaded successfully to: ${data.publicUrl}`)
-    return data.publicUrl
+    const result: DifyFileUploadResponse = await response.json()
+    console.log(`✅ ${type} image uploaded successfully to Dify with ID: ${result.id}`)
+    return result
     
   } catch (error) {
-    console.error(`❌ Storage upload failed for ${type} image:`, error)
+    console.error(`❌ Dify upload failed for ${type} image:`, error)
     return null
   }
 }
 
-// Helper function to clean up uploaded images in case of Dify API failure
-async function cleanupUploadedImages(supabase: any, imageUrls: string[]) {
-  for (const url of imageUrls) {
-    if (!url) continue
-    try {
-      // Extract file path from public URL
-      const urlParts = url.split('/storage/v1/object/public/heartbeat-images/')
-      if (urlParts.length > 1) {
-        const filePath = urlParts[1]
-        await supabase.storage
-          .from('heartbeat-images')
-          .remove([filePath])
-        console.log(`🧹 Cleaned up image: ${filePath}`)
-      }
-    } catch (error) {
-      console.error('Error cleaning up image:', error)
-    }
-  }
-}
+// COMMENTED OUT: Helper function to upload image to Supabase Storage and return public URL
+// async function uploadImageToStorage(
+//   supabase: any, 
+//   imageB64: string, 
+//   userId: string, 
+//   type: 'camera' | 'screen'
+// ): Promise<string | null> {
+//   try {
+//     // 1. Convert base64 Data URL to a Blob (reusing existing dataUrlToBlob)
+//     const imageBlob = dataUrlToBlob(imageB64)
+//     
+//     console.log(`📤 Uploading ${type} image to storage - Size: ${(imageBlob.size / 1024 / 1024).toFixed(2)} MB`)
+//     
+//     // Size guard - reject if over 3 MB
+//     if (imageBlob.size > 3 * 1024 * 1024) {
+//       throw new Error(`Image too large: ${(imageBlob.size / 1024 / 1024).toFixed(2)} MB (max 3 MB)`)
+//     }
+//     
+//     // 2. Define a unique, organized file path
+//     const filePath = `${userId}/${type}-${Date.now()}.png`
+
+//     // 3. Upload the file to Supabase Storage
+//     const { error: uploadError } = await supabase.storage
+//       .from('heartbeat-images')
+//       .upload(filePath, imageBlob)
+
+//     if (uploadError) {
+//       console.error(`Storage upload failed for ${type}:`, uploadError)
+//       return null
+//     }
+
+//     // 4. Get the public URL of the successfully uploaded file
+//     const { data } = supabase.storage
+//       .from('heartbeat-images')
+//       .getPublicUrl(filePath)
+      
+//     console.log(`✅ ${type} image uploaded successfully to: ${data.publicUrl}`)
+//     return data.publicUrl
+    
+//   } catch (error) {
+//     console.error(`❌ Storage upload failed for ${type} image:`, error)
+//     return null
+//   }
+// }
+
+// COMMENTED OUT: Helper function to clean up uploaded images in case of Dify API failure
+// async function cleanupUploadedImages(supabase: any, imageUrls: string[]) {
+//   for (const url of imageUrls) {
+//     if (!url) continue
+//     try {
+//       // Extract file path from public URL
+//       const urlParts = url.split('/storage/v1/object/public/heartbeat-images/')
+//       if (urlParts.length > 1) {
+//         const filePath = urlParts[1]
+//         await supabase.storage
+//           .from('heartbeat-images')
+//           .remove([filePath])
+//         console.log(`🧹 Cleaned up image: ${filePath}`)
+//       }
+//     } catch (error) {
+//       console.error('Error cleaning up image:', error)
+//     }
+//   }
+// }
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -105,7 +166,7 @@ serve(async (req) => {
 
   try {
     // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('VITE_SUPABASE_URL')
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
     
     if (!supabaseUrl || !supabaseServiceKey) {
@@ -113,23 +174,6 @@ serve(async (req) => {
     }
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
-    
-    // Verify Supabase client is initialized correctly
-    try {
-      // Simple health check query
-      const { data, error } = await supabase.from('_health').select('*').limit(1)
-      if (error) {
-        console.warn('Supabase client health check failed:', error.message)、
-        throw new Error(error.message)
-        // Continue execution as the table might not exist, but client could still be working
-      } else {
-        console.log('✅ Supabase client initialized successfully')
-      }
-    } catch (healthCheckError) {
-      console.warn('Supabase client health check error:', healthCheckError)
-      throw new Error('Supabase client Health Check Error')
-      // Continue execution as this is just a verification step
-    }
 
     // Get Dify API configuration
     const difyApiUrl = Deno.env.get('DIFY_API_URL')
@@ -193,31 +237,34 @@ serve(async (req) => {
 
     console.log('📋 Step 1: Session context:', { userGoal, taskName, sessionId })
 
-    // Step 2: Upload images to Supabase Storage and get public URLs
-    const uploadPromises: Promise<string | null>[] = []
+    // Step 2: Upload images directly to Dify and get file IDs
+    const uploadPromises: Promise<DifyFileUploadResponse | null>[] = []
     if (cameraImage) {
-      console.log('Uploading camera image')
-      uploadPromises.push(uploadImageToStorage(supabase, cameraImage, `user_${userId}`, 'camera'))
+      console.log('Uploading camera image to Dify')
+      uploadPromises.push(uploadImageToDify(cameraImage, userId, 'camera', difyApiUrl, difyApiKey))
     } else {
       console.log('No camera image')
       uploadPromises.push(Promise.resolve(null))
     }
     
     if (screenImage) {
-      console.log('Uploading screen image')
-      uploadPromises.push(uploadImageToStorage(supabase, screenImage, `user_${userId}`, 'screen'))
+      console.log('Uploading screen image to Dify')
+      uploadPromises.push(uploadImageToDify(screenImage, userId, 'screen', difyApiUrl, difyApiKey))
     } else {
       console.log('No screen image')
       uploadPromises.push(Promise.resolve(null))
     }
 
-    const [cameraImageUrl, screenImageUrl] = await Promise.all(uploadPromises)
+    const [difyCameraFile, difyScreenFile] = await Promise.all(uploadPromises)
     
-    console.log('📤 Step 2: Images uploaded to storage:', { cameraImageUrl, screenImageUrl })
+    console.log('📤 Step 2: Images uploaded to Dify:', { 
+      cameraFileId: difyCameraFile?.id, 
+      screenFileId: difyScreenFile?.id 
+    })
 
     // Check if we have any valid uploads
-    if (!cameraImageUrl && !screenImageUrl) {
-      console.warn('⚠️ No images uploaded successfully, returning default focused state')
+    if (!difyCameraFile && !difyScreenFile) {
+      console.warn('⚠️ No images uploaded successfully to Dify, returning default focused state')
       
       // Log a drift event with no media available
       const { error: insertError } = await supabase
@@ -251,14 +298,15 @@ serve(async (req) => {
       })
     }
 
-    // Step 3: Call Dify API for focus analysis using image URLs
+    // Step 3: Call Dify API for focus analysis using file IDs
     const difyPayload = {
       inputs: {
         goal_text: userGoal,
         task_name: taskName,
         task_name2: taskDescription,
-        ...(cameraImageUrl && { user_video_image: cameraImageUrl }),
-        ...(screenImageUrl && { screenshot_image: screenImageUrl })
+        // Use the file IDs from the Dify upload response
+        ...(difyCameraFile?.id && { user_video_image: difyCameraFile.id }),
+        ...(difyScreenFile?.id && { screenshot_image: difyScreenFile.id })
       },
       response_mode: 'blocking',
       user: `user_${userId}`
@@ -267,7 +315,7 @@ serve(async (req) => {
     console.log('🤖 Step 3: Calling Dify API with payload:', JSON.stringify(difyPayload, null, 2))
 
     let difyResult
-    let uploadedUrls = [cameraImageUrl, screenImageUrl].filter((url): url is string => Boolean(url))
+    // Note: No need to track uploaded URLs for cleanup since files are managed by Dify
 
     try {
       const difyResponse = await fetch(difyApiUrl, {
@@ -290,8 +338,8 @@ serve(async (req) => {
     } catch (difyError) {
       console.error('❌ Dify API call failed:', difyError)
       
-      // Clean up uploaded images since Dify call failed
-      await cleanupUploadedImages(supabase, uploadedUrls)
+      // COMMENTED OUT: Clean up uploaded images since Dify call failed
+      // await cleanupUploadedImages(supabase, uploadedUrls)
       
       // Return a fallback response
       const fallbackResponse: SessionHeartbeatResponse = {
