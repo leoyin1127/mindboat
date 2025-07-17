@@ -31,11 +31,13 @@ interface SplineEvent {
 interface SplineEventHandlerProps {
   onEventReceived?: (event: SplineEvent) => void
   onModalStateChange?: (isOpen: boolean) => void
+  currentUser?: { id: string; deviceFingerprint: string } | null
 }
 
 export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({ 
   onEventReceived,
-  onModalStateChange 
+  onModalStateChange,
+  currentUser
 }) => {
   const [showModal, setShowModal] = useState(false)
   const [currentEvent, setCurrentEvent] = useState<SplineEvent | null>(null)
@@ -76,9 +78,23 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
           const newEvent = payload.new
           const eventName = newEvent.event_name
           const eventData = newEvent.event_data
+          const eventUserId = newEvent.user_id
           
           console.log('Event name:', eventName)
           console.log('Event data:', eventData)
+          console.log('Event user_id:', eventUserId)
+          
+          // Filter events by current user to prevent cross-user modal triggers
+          if (eventUserId && currentUser?.id && eventUserId !== currentUser.id) {
+            console.log('🚫 Ignoring event for different user:', eventUserId)
+            return
+          }
+          
+          // If no user_id in event but we have a current user, also ignore (for safety)
+          if (!eventUserId && currentUser?.id) {
+            console.log('🚫 Ignoring event without user_id when user is logged in')
+            return
+          }
           
           // Create a SplineEvent compatible object
           const event: SplineEvent = {
@@ -154,7 +170,7 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [onEventReceived])
+  }, [onEventReceived, currentUser])
 
   const closeModal = () => {
     setShowModal(false)

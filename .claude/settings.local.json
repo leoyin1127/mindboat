@@ -2,8 +2,19 @@
   "permissions": {
     "allow": [
       "Bash(npx supabase db describe:*)",
-      "Bash(npx supabase:*)"
+      "Bash(npx supabase:*)",
+      "Bash(find:*)",
+      "mcp__supabase__list_tables",
+      "mcp__supabase__execute_sql",
+      "mcp__supabase__apply_migration",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ],
     "deny": []
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "supabase"
+  ]
 }

@@ -56,7 +56,8 @@ Deno.serve(async (req)=>{
     const { data, error } = await supabase.from('frontend_events') // This must be the table your frontend is listening to!
     .insert({
       event_name: eventName,
-      event_data: eventData
+      event_data: eventData,
+      user_id: payload.user_id // Include user_id from payload
     }).select();
     // Handle potential errors during insertion
     if (error) {
