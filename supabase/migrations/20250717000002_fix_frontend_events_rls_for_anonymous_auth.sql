@@ -1,8 +1,10 @@
 -- Fix RLS policy for frontend_events table to work with anonymous authentication
 -- The current policy blocks realtime subscriptions for anonymous users
 
--- Drop the existing policy that doesn't work with anonymous auth
+-- Drop all existing policies to start fresh
 DROP POLICY IF EXISTS frontend_events_user_policy ON frontend_events;
+DROP POLICY IF EXISTS frontend_events_anonymous_policy ON frontend_events;
+DROP POLICY IF EXISTS frontend_events_authenticated_policy ON frontend_events;
 
 -- Create a new policy that allows anonymous users to access all events
 -- This is acceptable for frontend_events since it's used for UI state management
