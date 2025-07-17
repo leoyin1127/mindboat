@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mic, MicOff, Video, VideoOff, Monitor, MonitorOff, Anchor, TestTube } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, Monitor, MonitorOff, Anchor, TestTube, Headphones } from 'lucide-react';
 
 interface ControlPanelProps {
   isVisible: boolean;
@@ -11,6 +11,8 @@ interface ControlPanelProps {
   isMicMuted?: boolean;
   isVideoOn?: boolean;
   isScreenSharing?: boolean;
+  isPassiveListening?: boolean;
+  isSpeechDetected?: boolean;
   onToggleMic?: () => void;
   onToggleVideo?: () => void;
   onToggleScreenShare?: () => void;
@@ -25,6 +27,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   isMicMuted = false,
   isVideoOn = false,
   isScreenSharing = false,
+  isPassiveListening = false,
+  isSpeechDetected = false,
   onToggleMic,
   onToggleVideo,
   onToggleScreenShare
@@ -221,6 +225,57 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               {!isScreenSharing && <span className="block text-xs text-white/70 mt-1">Auto-enabled if granted in permission panel</span>}
             </span>
           </button>
+
+          {/* Passive Listening Indicator - FR-2.2 */}
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 
+                         backdrop-blur-md border relative overflow-visible group ${
+                           isPassiveListening 
+                             ? isSpeechDetected 
+                               ? 'bg-orange-400/20 border-orange-300/30 shadow-orange-400/20' 
+                               : 'bg-blue-400/20 border-blue-300/30 shadow-blue-400/20'
+                             : 'bg-gray-400/20 border-gray-300/30 shadow-gray-400/20'
+                         }`}>
+            
+            {/* Status indicator inner glow */}
+            <div className={`absolute inset-0 rounded-2xl transition-opacity duration-300 ${
+              isPassiveListening 
+                ? isSpeechDetected 
+                  ? 'bg-gradient-to-br from-orange-300/20 to-orange-500/20' 
+                  : 'bg-gradient-to-br from-blue-300/20 to-blue-500/20'
+                : 'bg-gradient-to-br from-gray-300/20 to-gray-500/20'
+            }`}></div>
+
+            {/* Animated listening indicator */}
+            <div className="relative z-10">
+              <Headphones className={`w-5 h-5 text-white transition-all duration-300 ${
+                isPassiveListening ? (isSpeechDetected ? 'animate-bounce' : 'animate-pulse') : ''
+              }`} />
+              
+              {/* Small status dot */}
+              <div className={`absolute -bottom-1 -right-1 w-2 h-2 rounded-full transition-all duration-300 ${
+                isPassiveListening 
+                  ? isSpeechDetected 
+                    ? 'bg-red-400 shadow-red-400/50 animate-pulse' 
+                    : 'bg-green-400 shadow-green-400/50'
+                  : 'bg-gray-400'
+              }`}></div>
+            </div>
+
+            {/* Custom hover tooltip */}
+            <span className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-1.5 
+                           bg-gradient-to-br from-white/15 via-white/10 to-white/8 
+                           backdrop-blur-md border border-white/25 rounded-md 
+                           text-sm text-white/90 whitespace-nowrap 
+                           opacity-0 invisible group-hover:opacity-100 group-hover:visible 
+                           transition-all duration-300 z-20
+                           shadow-[0_4px_16px_rgba(0,0,0,0.1),0_1px_4px_rgba(0,0,0,0.06)]">
+              {isPassiveListening 
+                ? isSpeechDetected 
+                  ? 'Recording speech...' 
+                  : 'Listening for speech...'
+                : 'Passive listening inactive'}
+            </span>
+          </div>
 
           {/* Test Drift Intervention Button - FR-2.4 */}
           <button

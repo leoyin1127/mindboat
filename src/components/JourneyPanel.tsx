@@ -7,6 +7,7 @@ import { VideoPreview } from './VideoPreview';
 import { SeagullPanel } from './SeagullPanel';
 import { auth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
+import { usePassiveListening } from '../hooks/usePassiveListening';
 
 interface Task {
   id: string;
@@ -121,12 +122,17 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [isHeartbeatActive, setIsHeartbeatActive] = useState(false);
 
-  // Passive listening state (FR-2.2)
-  const [isPassiveListening, setIsPassiveListening] = useState(false);
-  const passiveRecognitionRef = useRef<SpeechRecognition | null>(null);
-  const [passiveTranscript, setPassiveTranscript] = useState<string>('');
-  const lastPassiveLogTime = useRef<number>(0);
-  const PASSIVE_LOG_INTERVAL = 5000; // Log speech every 5 seconds
+  // Passive listening hook (FR-2.2)
+  const {
+    isPassiveListening,
+    isSpeechDetected,
+    passiveTranscript,
+    startPassiveListening,
+    stopPassiveListening
+  } = usePassiveListening({
+    currentSessionId,
+    isSessionActive
+  });
 
   // Drag and drop state
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
@@ -632,143 +638,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
     console.log('All media streams cleaned up');
   };
 
-  // FR-2.2: Passive Listening Functions
-  const initializePassiveListening = () => {
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      console.warn('Speech recognition not supported in this browser');
-      return;
-    }
-
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      let finalTranscript = '';
-
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalTranscript += transcript;
-        }
-      }
-
-      if (finalTranscript.trim()) {
-        setPassiveTranscript(prev => prev + finalTranscript);
-        logPassiveSpeech(finalTranscript);
-      }
-    };
-
-    recognition.onerror = (event: SpeechRecognitionError) => {
-      console.error('Passive speech recognition error:', event.error);
-      // Restart recognition on error (unless it's a critical error)
-      if (event.error !== 'not-allowed' && event.error !== 'service-not-allowed') {
-        setTimeout(() => {
-          if (isSessionActive && passiveRecognitionRef.current) {
-            try {
-              recognition.start();
-            } catch (error) {
-              console.warn('Failed to restart passive recognition:', error);
-            }
-          }
-        }, 1000);
-      }
-    };
-
-    recognition.onend = () => {
-      // Restart recognition if session is still active
-      if (isSessionActive && passiveRecognitionRef.current) {
-        try {
-          recognition.start();
-        } catch (error) {
-          console.warn('Failed to restart passive recognition after end:', error);
-        }
-      }
-    };
-
-    passiveRecognitionRef.current = recognition;
-  };
-
-  const startPassiveListening = () => {
-    if (!currentSessionId) {
-      console.warn('Cannot start passive listening: no active session');
-      return;
-    }
-
-    if (isPassiveListening) {
-      console.log('Passive listening already active');
-      return;
-    }
-
-    // Initialize recognition if not already done
-    if (!passiveRecognitionRef.current) {
-      initializePassiveListening();
-    }
-
-    if (passiveRecognitionRef.current) {
-      try {
-        passiveRecognitionRef.current.start();
-        setIsPassiveListening(true);
-        setPassiveTranscript('');
-        console.log('✅ Passive listening started');
-      } catch (error) {
-        console.error('Failed to start passive listening:', error);
-      }
-    }
-  };
-
-  const stopPassiveListening = () => {
-    if (passiveRecognitionRef.current) {
-      try {
-        passiveRecognitionRef.current.stop();
-        passiveRecognitionRef.current = null;
-      } catch (error) {
-        console.warn('Error stopping passive recognition:', error);
-      }
-    }
-    setIsPassiveListening(false);
-    setPassiveTranscript('');
-    console.log('⏹️ Passive listening stopped');
-  };
-
-  const logPassiveSpeech = async (transcript: string) => {
-    if (!currentSessionId || !transcript.trim()) return;
-
-    const now = Date.now();
-    if (now - lastPassiveLogTime.current < PASSIVE_LOG_INTERVAL) {
-      return; // Too soon since last log
-    }
-
-    lastPassiveLogTime.current = now;
-
-    try {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/log-passive-speech`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({
-          session_id: currentSessionId,
-          transcript: transcript.trim(),
-          timestamp: new Date().toISOString(),
-          interim: false
-        })
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        console.log('✅ Passive speech logged:', result.event_id);
-      } else {
-        console.error('Failed to log passive speech:', response.status, response.statusText);
-      }
-    } catch (error) {
-      console.error('Error logging passive speech:', error);
-    }
-  };
+  // FR-2.2: Passive Listening now handled by usePassiveListening hook
 
   // Image capture utilities for heartbeat system
   const captureCameraFrame = async (): Promise<Blob | null> => {
@@ -1215,7 +1085,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
 
       // Step 7: Start passive listening for FR-2.2
       setTimeout(() => {
-        startPassiveListening();
+        startPassiveListening(sessionId);
       }, 2000); // Start after 2 seconds to ensure session is fully initialized
 
       // Step 8: Show control panel and hide journey panel
@@ -1727,6 +1597,8 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
         isMicMuted={isMicMuted}
         isVideoOn={isVideoOn}
         isScreenSharing={isScreenSharing}
+        isPassiveListening={isPassiveListening}
+        isSpeechDetected={isSpeechDetected}
         onToggleMic={toggleMic}
         onToggleVideo={toggleVideo}
         onToggleScreenShare={toggleScreenShare}

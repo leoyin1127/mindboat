@@ -2,20 +2,24 @@
 # Log Passive Speech Edge Function
 
 This Edge Function logs passive speech during active sailing sessions for FR-2.2.
-It stores speech transcripts in the session_events table for later processing.
+It stores speech transcripts in the SailingLog table for later processing.
 
 ## Usage
 - URL: https://[your-project].supabase.co/functions/v1/log-passive-speech  
 - Method: POST
 - Content-Type: application/json
 - Body: JSON with session_id, transcript, and timestamp
-- Returns: Success response with event_id
+- Returns: Success response with sailinglog_id
 
 ## Expected JSON body:
 - session_id: string (UUID of active session)
 - transcript: string (speech transcript text)
 - timestamp: string (ISO timestamp when speech occurred)
 - interim: boolean (whether this is interim or final transcript)
+
+## Storage Location:
+- Table: SailingLog
+- Columns: user_id, session_id, transcribed_text, source, created_at
 */
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
@@ -135,26 +139,38 @@ Deno.serve(async (req: Request) => {
             )
         }
 
-        // Log the speech event
-        const { data: eventData, error: eventError } = await supabase
-            .from('session_events')
+        // Ensure user exists in goal table (required due to foreign key constraint)
+        const { error: goalError } = await supabase
+            .from('goal')
+            .upsert({
+                user_id: sessionData.user_id,
+                goal_text: 'Default goal for passive speech logging'
+            }, {
+                onConflict: 'user_id'
+            })
+
+        if (goalError) {
+            console.warn('Could not create/update goal entry:', goalError)
+            // Continue anyway - we'll handle the constraint violation below
+        }
+
+        // Log the speech to SailingLog table
+        const { data: logData, error: logError } = await supabase
+            .from('SailingLog')
             .insert({
+                user_id: sessionData.user_id,
                 session_id: session_id,
-                event_type: 'passive_speech',
-                event_data: {
-                    transcript: transcript,
-                    timestamp: timestamp,
-                    speech_length: transcript.length,
-                    word_count: transcript.split(/\s+/).length
-                }
+                transcribed_text: transcript,
+                source: 'passive_listening',
+                created_at: timestamp
             })
             .select()
             .single()
 
-        if (eventError) {
-            console.error('Error logging speech event:', eventError)
+        if (logError) {
+            console.error('Error logging speech to SailingLog:', logError)
             return new Response(
-                JSON.stringify({ error: 'Failed to log speech event', details: eventError }),
+                JSON.stringify({ error: 'Failed to log speech to SailingLog', details: logError }),
                 {
                     status: 500,
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -162,12 +178,12 @@ Deno.serve(async (req: Request) => {
             )
         }
 
-        console.log('✅ Passive speech logged successfully:', eventData.id)
+        console.log('✅ Passive speech logged to SailingLog successfully:', logData.sailinglog_id)
 
         const response: LogPassiveSpeechResponse = {
             success: true,
-            event_id: eventData.id,
-            message: 'Speech logged successfully'
+            event_id: logData.sailinglog_id.toString(),
+            message: 'Speech logged to SailingLog successfully'
         }
 
         return new Response(
