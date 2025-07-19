@@ -75,7 +75,7 @@ Deno.serve(async (req: Request) => {
         const { data: recentUser, error } = await supabase
           .from('users')
           .select('id')
-          .order('last_seen', { ascending: false })
+          .order('last_seen_at', { ascending: false })
           .limit(1)
           .single()
         
