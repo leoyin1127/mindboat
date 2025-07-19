@@ -78,7 +78,7 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
           const newEvent = payload.new
           const eventName = newEvent.event_name
           const eventData = newEvent.event_data
-          const eventUserId = newEvent.user_id
+          let eventUserId = newEvent.user_id
           
           console.log('Event name:', eventName)
           console.log('Event data:', eventData)

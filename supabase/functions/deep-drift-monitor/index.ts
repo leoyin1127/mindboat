@@ -95,7 +95,7 @@ serve(async (req) => {
       console.log(`Session ${session.id}: ${consecutiveDrifts} consecutive drifts`)
 
       // Step 3: Check if intervention should be triggered
-      if (consecutiveDrifts >= 5) {
+      if (consecutiveDrifts >= 1) {
         const latestDrift = recentDrifts[0] // Most recent drift event
 
         // Only trigger if the latest drift hasn't already triggered an intervention

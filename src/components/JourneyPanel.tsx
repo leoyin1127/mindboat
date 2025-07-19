@@ -722,12 +722,12 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       // Draw video frame to canvas with compression
       ctx.drawImage(video, 0, 0, finalWidth, finalHeight);
 
-      // Convert to blob with higher compression (0.65 quality)
+      // Convert to blob with higher compression (0.85 quality)
       return new Promise((resolve) => {
         canvas.toBlob((blob) => {
           console.log('🎥 DEBUG: Camera blob created:', blob ? `${(blob.size / 1024).toFixed(1)}KB` : 'NULL');
           resolve(blob);
-        }, 'image/jpeg', 0.65);
+        }, 'image/jpeg', 0.85);
       });
     } catch (error) {
       console.error('❌ Error capturing camera frame:', error);
@@ -774,8 +774,8 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       console.log('🖥️ DEBUG: Screen dimensions:', video.videoWidth, 'x', video.videoHeight);
 
       // Compress screen capture to reasonable size (960x540) to reduce payload
-      const targetWidth = 960;
-      const targetHeight = 540;
+      const targetWidth = 1008;
+      const targetHeight = 567;
       const sourceWidth = video.videoWidth || 1280;
       const sourceHeight = video.videoHeight || 720;
 
@@ -801,12 +801,12 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       // Draw video frame to canvas with compression
       ctx.drawImage(video, 0, 0, finalWidth, finalHeight);
 
-      // Convert to blob with higher compression (0.65 quality)
+      // Convert to blob with higher compression (0.85 quality)
       return new Promise((resolve) => {
         canvas.toBlob((blob) => {
           console.log('🖥️ DEBUG: Screen blob created:', blob ? `${(blob.size / 1024).toFixed(1)}KB` : 'NULL');
           resolve(blob);
-        }, 'image/jpeg', 0.65);
+        }, 'image/jpeg', 0.85);
       });
     } catch (error) {
       console.error('❌ Error capturing screen frame:', error);
