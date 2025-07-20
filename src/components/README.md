@@ -95,6 +95,18 @@ This directory contains all the React components for The Mindboat application. E
   - Real-time control state management
 - **Usage**: Provides session controls during active focus sessions
 
+#### `JourneyVisualization.tsx`
+**Purpose**: Interactive journey progress visualization for sailing summary
+- **Features**:
+  - Layered image composition (map background, ship, wake trail, markers)
+  - Dynamic ship positioning based on focus time progress
+  - SVG-based curved sailing path with dotted trail
+  - Wake trail texture that follows behind ship along completed path
+  - Animated progress indicators and ship rotation
+  - Start and destination markers (scroll banners)
+  - Responsive design with smooth animations
+- **Usage**: Embedded in SailingSummaryPanel to show visual journey progress
+
 ## Design System Integration
 
 All components follow the design system defined in `src/styles/designSystem.ts`:
