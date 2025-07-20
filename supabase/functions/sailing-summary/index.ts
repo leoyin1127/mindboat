@@ -132,7 +132,7 @@ Deno.serve(async (req: Request) => {
 
     // Extract session data
     const { taskId, sessionData } = requestData
-    const { taskTitle, taskCategory, durationSeconds, focusSeconds, driftSeconds, driftCount } = sessionData
+    const { taskTitle, taskCategory, durationSeconds, focusSeconds, driftSeconds, driftCount, ai_analysis } = sessionData
 
     // Calculate actual session duration from real data
     const actualDurationSeconds = Number(durationSeconds) || 0
@@ -163,10 +163,15 @@ Deno.serve(async (req: Request) => {
     const selectedTemplate = categoryData.summaryTemplates[randomTemplateIndex]
 
     // Replace template variables with actual session data
-    const summaryText = selectedTemplate
+    let summaryText = selectedTemplate
       .replace(/{duration}/g, sessionDurationHours.toFixed(1))
       .replace(/{task_title}/g, taskTitle)
       .replace(/{distraction_time}/g, driftTimeMinutes.toString())
+
+    // Add AI analysis insights if available
+    if (ai_analysis && ai_analysis.overall_comment) {
+      summaryText += `\n\n💭 AI Insights: ${ai_analysis.overall_comment}`;
+    }
 
     // Prepare response
     const response: SailingSummaryResponse = {

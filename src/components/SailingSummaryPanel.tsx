@@ -109,12 +109,13 @@ export const SailingSummaryPanel: React.FC<SailingSummaryPanelProps> = ({
                   <div className="flex-1">
                     <div className="bg-gradient-to-br from-white/8 via-white/5 to-white/3 
                                     backdrop-blur-md border border-white/20 rounded-2xl p-6
-                                    shadow-[inset_0_2px_8px_rgba(0,0,0,0.15),inset_0_1px_0_rgba(255,255,255,0.05)]">
-                      <p className="text-white/90 font-inter text-base leading-relaxed">
+                                    shadow-[inset_0_2px_8px_rgba(0,0,0,0.15),inset_0_1px_0_rgba(255,255,255,0.05)]
+                                    max-h-80 overflow-y-auto">
+                      <div className="text-white/90 font-inter text-base leading-relaxed whitespace-pre-line">
                         {summaryData?.summaryText || 
                          "Today, you sailed x hours toward the continent of your thesis. Along the way, you were easily drawn to [backend input value], spending x minutes on it. If you'd like to dive deeper into your reflections, check out the Seagull's Human Observation Log. Keep it up—the journey itself is the reward!"
                         }
-                      </p>
+                      </div>
                     </div>
                   </div>
 
