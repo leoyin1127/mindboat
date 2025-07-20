@@ -213,6 +213,10 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
         } else if (uiAction === 'show_seagull' || modalType === 'seagull' || eventType === 'spline_seagull_trigger') {
           console.log('📢 Broadcast: Showing seagull panel')
           setShowSeagullPanel(true)
+        } else if (uiAction === 'change_scene_to_drift' || modalType === 'drift' || eventType === 'drift_scene_change') {
+          console.log('✅ Spline scene changed to drift mode')
+          // Scene change is handled by the underlying Spline scene itself
+          // This log confirms the event was received and processed
         } else {
           console.log('❓ No matching broadcast condition found for:', { uiAction, modalType, eventType })
         }

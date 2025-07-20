@@ -5,6 +5,7 @@ import { SailingSummaryPanel } from './SailingSummaryPanel';
 import { PermissionPanel } from './PermissionPanel';
 import { VideoPreview } from './VideoPreview';
 import { SeagullPanel } from './SeagullPanel';
+import { DriftNotification } from './DriftNotification';
 import { auth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { usePassiveListening } from '../hooks/usePassiveListening';
@@ -137,6 +138,11 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   // Drag and drop state
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  // Drift detection state
+  const [isDrifting, setIsDrifting] = useState(false);
+  const [driftReason, setDriftReason] = useState('');
+  const [isDriftAcknowledged, setIsDriftAcknowledged] = useState(false);
 
   // Fetch tasks from database
   const fetchTasks = async () => {
@@ -877,6 +883,26 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
 
       console.log('✅ Heartbeat sent successfully:', data);
 
+      // Handle drift state changes (unless user has acknowledged drift)
+      if (!isDriftAcknowledged) {
+        const newDriftState = data.is_drifting;
+        
+        if (newDriftState !== isDrifting) {
+          console.log(`🔄 Drift state change: ${isDrifting} → ${newDriftState}`);
+          setIsDrifting(newDriftState);
+          
+          // Update drift reason when entering drift state
+          if (newDriftState) {
+            setDriftReason(data.drift_reason || 'Focus has drifted from the task');
+          } else {
+            setDriftReason('');
+          }
+          
+          // Trigger Spline scene change
+          triggerSplineDriftScene(newDriftState);
+        }
+      }
+
       // Log drift status for debugging
       if (data.is_drifting) {
         console.warn('🚨 Drift detected:', data.drift_reason);
@@ -902,7 +928,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
     setTimeout(() => sendHeartbeat(sessionId, isActive), 8000); // Wait 8 seconds for streams to stabilize
 
     // Then send every 60 seconds
-    heartbeatIntervalRef.current = setInterval(() => sendHeartbeat(sessionId, isActive), 60000);
+    heartbeatIntervalRef.current = setInterval(() => sendHeartbeat(sessionId, isActive), 30000);
   };
 
   // Stop heartbeat monitoring
@@ -998,6 +1024,69 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
     } catch (error) {
       console.error(`Error triggering ${event} session animation:`, error);
     }
+  };
+
+  // Trigger Spline animation for drift state changes
+  const triggerSplineDriftScene = async (isDriftingScene: boolean, retries = 3) => {
+    try {
+      const webhookUrl = isDriftingScene 
+        ? 'https://hooks.spline.design/6wyPobVwpQk'  // Drift scene
+        : 'https://hooks.spline.design/xyN_bGAd8LY'; // Sailing scene
+      
+      const payload = isDriftingScene 
+        ? { number3: 0 }  // Drift scene trigger
+        : { number4: 0 }; // Sailing scene trigger
+      
+      console.log('🔄 Spline scene change triggered:', isDriftingScene);
+      console.log('🔄 Spline webhook URL:', webhookUrl);
+      console.log('🔄 Spline payload:', payload);
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/journey-webhook`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          webhookUrl,
+          payload,
+          callingPanel: 'JourneyPanel',
+          purpose: 'drift_scene_change'
+        })
+      });
+
+      if (response.ok) {
+        console.log(`✅ Spline scene changed to ${isDriftingScene ? 'drift' : 'sailing'} mode`);
+      } else {
+        console.error(`❌ Failed to trigger Spline scene change:`, response.status);
+        throw new Error(`HTTP ${response.status}`);
+      }
+    } catch (error) {
+      console.error(`Spline webhook failed. Retries left: ${retries - 1}`, error);
+      if (retries > 1) {
+        // Wait 1 second before retry
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await triggerSplineDriftScene(isDriftingScene, retries - 1);
+      } else {
+        console.error('❌ All Spline webhook retries failed');
+      }
+    }
+  };
+
+  // Handle "Continue Working" button from drift notification
+  const handleContinueWorking = () => {
+    console.log('🎯 User clicked "Continue Working" - providing 1-minute grace period');
+    
+    // Immediately hide drift UI and change scene
+    setIsDriftAcknowledged(true);
+    setIsDrifting(false);
+    triggerSplineDriftScene(false);
+
+    // Set a timer to re-enable drift detection after 1 minute
+    setTimeout(() => {
+      console.log('⏰ Drift detection grace period ended - re-enabling detection');
+      setIsDriftAcknowledged(false);
+    }, 60000); // 1 minute
   };
 
   // Core session starting logic - separated from permission checks
@@ -1654,6 +1743,13 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
           setSeagullMessage('');
         }}
         message={seagullMessage}
+      />
+
+      {/* Drift Notification - Shows after 5 seconds when drifting */}
+      <DriftNotification
+        isVisible={isDrifting}
+        onContinueWorking={handleContinueWorking}
+        driftReason={driftReason}
       />
     </>
   );

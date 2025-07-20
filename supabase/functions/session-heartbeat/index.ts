@@ -30,7 +30,7 @@ async function uploadImageToDify(imageB64, userId, type, difyApiUrl, difyApiKey)
     console.log('uploadUrl', uploadUrl);
     console.log('difyApiURL', difyApiUrl);
     console.log('difyApiKey', difyApiKey);
-    console.log(111111, Deno.env.get('DIFY_API_URL'));
+    // console.log(111111, Deno.env.get('DIFY_API_URL'));
     // 3. Create FormData with the image and user identifier
     const formData = new FormData();
     formData.append('file', imageBlob, `${type}-${Date.now()}.png`);
@@ -153,6 +153,19 @@ serve(async (req)=>{
       throw new Error('At least one image (camera or screen) is required');
     }
     console.log('📊 Processing heartbeat for session:', sessionId);
+    
+    // Step 0: Fetch previous drift state to track transitions
+    const { data: lastDriftEvent, error: lastDriftError } = await supabase
+      .from('drift_events')
+      .select('is_drifting')
+      .eq('session_id', sessionId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+    
+    const wasPreviouslyDrifting = lastDriftEvent?.is_drifting || false;
+    console.log('📊 Previous drift state:', wasPreviouslyDrifting);
+    
     // Step 1: Fetch session context from database
     const { data: sessionData, error: sessionError } = await supabase.from('sailing_sessions').select(`
         id,
@@ -416,6 +429,46 @@ serve(async (req)=>{
     if (insertError) {
       console.error('Error inserting drift event:', insertError);
       throw insertError;
+    }
+    
+    // Step 4.5: Update session drift statistics
+    const isCurrentlyDrifting = analysisResult.is_drifting;
+    const justStartedDrifting = !wasPreviouslyDrifting && isCurrentlyDrifting;
+    const HEARTBEAT_INTERVAL_SECONDS = 30; // Heartbeat interval
+    
+    if (justStartedDrifting || isCurrentlyDrifting) {
+      console.log('📊 Updating session drift statistics:', { justStartedDrifting, isCurrentlyDrifting });
+      
+      const updateData: any = {};
+      
+      // First, get current values to increment them
+      const { data: currentSession } = await supabase
+        .from('sailing_sessions')
+        .select('drift_count, total_drift_seconds')
+        .eq('id', sessionId)
+        .single();
+      
+      if (justStartedDrifting) {
+        // Increment drift_count only when starting a new drift
+        updateData.drift_count = (currentSession?.drift_count || 0) + 1;
+        console.log('📊 Incrementing drift count');
+      }
+      if (isCurrentlyDrifting) {
+        // Add to total_drift_seconds every heartbeat while drifting
+        updateData.total_drift_seconds = (currentSession?.total_drift_seconds || 0) + HEARTBEAT_INTERVAL_SECONDS;
+        console.log('📊 Adding drift time:', HEARTBEAT_INTERVAL_SECONDS, 'seconds');
+      }
+      
+      const { error: driftUpdateError } = await supabase
+        .from('sailing_sessions')
+        .update(updateData)
+        .eq('id', sessionId);
+      
+      if (driftUpdateError) {
+        console.error('Error updating session drift stats:', driftUpdateError);
+      } else {
+        console.log('✅ Session drift stats updated successfully');
+      }
     }
     // Step 5: Update session state (keep as 'active' regardless of drift status)
     // Note: Drift status is tracked in drift_events table, session remains active

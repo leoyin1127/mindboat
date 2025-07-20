@@ -23,6 +23,9 @@ interface SplineProxyRequest {
   // Legacy support for direct payload
   number?: number;
   numbaer2?: number;
+  // New fields for tracking
+  callingPanel?: string;
+  purpose?: string;
   [key: string]: any;
 }
 
@@ -126,6 +129,8 @@ Deno.serve(async (req: Request) => {
     }
 
     console.log('=== SPLINE PROXY REQUEST ===')
+    console.log('🎯 Called by:', requestData.callingPanel || 'UNKNOWN_PANEL')
+    console.log('🎯 Purpose:', requestData.purpose || 'UNKNOWN_PURPOSE')
     console.log('Request data:', JSON.stringify(requestData, null, 2))
     console.log('Timestamp:', new Date().toISOString())
 
@@ -180,6 +185,8 @@ Deno.serve(async (req: Request) => {
         status: splineResponse.status,
         statusText: splineResponse.statusText,
         timestamp: new Date().toISOString(),
+        callingPanel: requestData.callingPanel || 'UNKNOWN_PANEL',
+        purpose: requestData.purpose || 'UNKNOWN_PURPOSE',
         requestData: requestData,
         webhookUrl: webhookUrl,
         sentPayload: payload,
