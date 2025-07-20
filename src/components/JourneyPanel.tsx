@@ -928,7 +928,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
     setTimeout(() => sendHeartbeat(sessionId, isActive), 8000); // Wait 8 seconds for streams to stabilize
 
     // Then send every 60 seconds
-    heartbeatIntervalRef.current = setInterval(() => sendHeartbeat(sessionId, isActive), 30000);
+    heartbeatIntervalRef.current = setInterval(() => sendHeartbeat(sessionId, isActive), 60000);
   };
 
   // Stop heartbeat monitoring
@@ -1029,17 +1029,24 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   // Trigger Spline animation for drift state changes
   const triggerSplineDriftScene = async (isDriftingScene: boolean, retries = 3) => {
     try {
+      const currentUser = auth.getCurrentUser();
+      if (!currentUser) {
+        console.error('❌ Cannot trigger Spline scene change: User not authenticated');
+        return;
+      }
+
       const webhookUrl = isDriftingScene 
         ? 'https://hooks.spline.design/6wyPobVwpQk'  // Drift scene
         : 'https://hooks.spline.design/xyN_bGAd8LY'; // Sailing scene
       
       const payload = isDriftingScene 
-        ? { number3: 0 }  // Drift scene trigger
-        : { number4: 0 }; // Sailing scene trigger
+        ? { numbaer3: 0 }  // Drift scene trigger (typo intentional)
+        : { numbaer4: 0 }; // Sailing scene trigger (typo intentional)
       
       console.log('🔄 Spline scene change triggered:', isDriftingScene);
       console.log('🔄 Spline webhook URL:', webhookUrl);
       console.log('🔄 Spline payload:', payload);
+      console.log('🔄 User ID:', currentUser.id);
 
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/journey-webhook`, {
         method: 'POST',
@@ -1048,6 +1055,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify({
+          user_id: currentUser.id, // Add user_id for SplineEventHandler filtering
           webhookUrl,
           payload,
           callingPanel: 'JourneyPanel',
@@ -1227,38 +1235,26 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
     setIsLoadingSummary(true);
 
     try {
-      // Step 1: End sailing session in database
-      console.log('Calling endSession with sessionId:', sessionIdToEnd);
-      let sessionSummary: Record<string, unknown>;
+      // Step 1: Call the new session-end function
+      console.log('Calling session-end with sessionId:', sessionIdToEnd);
+      
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/session-end`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          sessionId: sessionIdToEnd
+        })
+      });
 
-      try {
-        sessionSummary = await auth.endSession(sessionIdToEnd);
-        console.log('Sailing session ended with summary:', sessionSummary);
-      } catch (sessionError) {
-        console.error('Error ending session, using fallback data:', sessionError);
-        // Use default values if session ending fails
-        sessionSummary = {
-          duration_seconds: sessionStartTime ? Math.floor((Date.now() - sessionStartTime.getTime()) / 1000) : 0,
-          focus_seconds: 0,
-          drift_seconds: 0,
-          drift_count: 0,
-          focus_percentage: 0
-        };
+      if (!response.ok) {
+        throw new Error(`Session end failed: ${response.status} ${response.statusText}`);
       }
 
-      // Validate session summary data
-      if (!sessionSummary || typeof sessionSummary !== 'object') {
-        console.warn('Invalid session summary received:', sessionSummary);
-        // Use default values if session summary is invalid
-        sessionSummary = {
-          duration_seconds: sessionStartTime ? Math.floor((Date.now() - sessionStartTime.getTime()) / 1000) : 0,
-          focus_seconds: 0,
-          drift_seconds: 0,
-          drift_count: 0,
-          focus_percentage: 0
-        };
-        console.log('Using default session summary:', sessionSummary);
-      }
+      const sessionEndData = await response.json();
+      console.log('Session ended successfully:', sessionEndData);
 
       // Step 2: Trigger Spline animation
       await triggerSplineSessionAnimation('end');
@@ -1268,8 +1264,8 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       cleanupMediaStreams();
       stopHeartbeat();
 
-      // Step 4: Generate AI summary
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sailing-summary`, {
+      // Step 4: Call sailing-summary with the detailed session data
+      const summaryResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sailing-summary`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1283,33 +1279,59 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
             taskCategory: getPriorityText(selectedTask?.priority || 2),
             startTime: sessionStartTime?.toISOString(),
             endTime: new Date().toISOString(),
-            durationSeconds: sessionSummary.duration_seconds,
-            focusSeconds: sessionSummary.focus_seconds,
-            driftSeconds: sessionSummary.drift_seconds,
-            driftCount: sessionSummary.drift_count,
-            focusPercentage: sessionSummary.focus_percentage,
-            ...sessionSummary
+            durationSeconds: sessionEndData.stats.totalDuration,
+            focusSeconds: sessionEndData.stats.sailingDuration,
+            driftSeconds: sessionEndData.stats.driftingDuration,
+            driftCount: sessionEndData.stats.distractionCount,
+            focusPercentage: sessionEndData.stats.focusPercentage,
+            ai_analysis: sessionEndData.ai_analysis
           }
         })
       });
 
-      if (response.ok) {
-        const summaryResponse = await response.json();
-        console.log('Voyage summary generated successfully:', summaryResponse);
+      if (summaryResponse.ok) {
+        const summaryData = await summaryResponse.json();
+        console.log('Voyage summary generated successfully:', summaryData);
 
-        // Set the summary data
+        // Enhanced summary text that includes AI analysis
+        const enhancedSummaryText = `${summaryData.summaryText}
+
+📊 Session Statistics:
+• Duration: ${Math.round(sessionEndData.stats.totalDuration / 60)} minutes
+• Focus Time: ${Math.round(sessionEndData.stats.sailingDuration / 60)} minutes (${sessionEndData.stats.focusPercentage}%)
+• Distractions: ${sessionEndData.stats.distractionCount} events
+
+🤖 AI Analysis:
+${sessionEndData.ai_analysis.overall_comment}
+
+${sessionEndData.ai_analysis.distraction_analysis}
+
+💡 Improvement Tips:
+${sessionEndData.ai_analysis.improvement_tips.map(tip => `• ${tip}`).join('\n')}`;
+
+        // Set the enhanced summary data
         setSummaryData({
-          imageUrl: summaryResponse.imageUrl,
-          summaryText: summaryResponse.summaryText
+          imageUrl: summaryData.imageUrl,
+          summaryText: enhancedSummaryText
         });
       } else {
-        console.error('Failed to generate voyage summary:', response.status, response.statusText);
+        console.error('Failed to generate voyage summary:', summaryResponse.status, summaryResponse.statusText);
         // Show fallback summary with session data
-        const duration = Math.floor((Number(sessionSummary.duration_seconds) || 0) / 60);
-        const focus = Number(sessionSummary.focus_percentage) || 0;
+        const duration = Math.round(sessionEndData.stats.totalDuration / 60);
+        const focus = sessionEndData.stats.focusPercentage;
         setSummaryData({
           imageUrl: 'https://images.pexels.com/photos/1001682/pexels-photo-1001682.jpeg?auto=compress&cs=tinysrgb&w=800',
-          summaryText: `Your voyage has been completed successfully! Duration: ${duration} minutes, Focus: ${focus}%`
+          summaryText: `Your voyage has been completed successfully!
+
+📊 Session Statistics:
+• Duration: ${duration} minutes
+• Focus Time: ${focus}%
+• Distractions: ${sessionEndData.stats.distractionCount} events
+
+🤖 AI Analysis:
+${sessionEndData.ai_analysis.overall_comment}
+
+${sessionEndData.ai_analysis.distraction_analysis}`
         });
       }
 

@@ -57,7 +57,7 @@ Deno.serve(async (req: Request) => {
 
     console.log('=== JOURNEY WEBHOOK CALLED ===')
     console.log('Payload received:', JSON.stringify(payload, null, 2))
-    console.log('Detected type:', payload.payload?.number3 !== undefined ? 'DRIFT_SCENE_CHANGE' : 'JOURNEY_PANEL')
+    console.log('Detected type:', payload.payload?.numbaer3 !== undefined ? 'DRIFT_SCENE_CHANGE' : 'JOURNEY_PANEL')
     console.log('Timestamp:', new Date().toISOString())
 
     // Initialize Supabase client
@@ -67,16 +67,21 @@ Deno.serve(async (req: Request) => {
     )
 
     // Handle different payload types
-    const isDriftSceneChange = payload.payload?.number3 !== undefined;
+    const isDriftSceneChange = payload.payload?.numbaer3 !== undefined;
 
     console.log('isDriftSceneChange:', isDriftSceneChange)
+    
+    // Extract user_id from the request payload
+    const userId = payload.user_id || payload.payload?.user_id;
     
     // Create the event data based on payload type
     const eventData = {
       type: isDriftSceneChange ? 'drift_scene_change' : 'spline_journey_trigger',
+      user_id: userId, // Add user_id to top level for SplineEventHandler filtering
       payload: {
         ...payload,
-        number: isDriftSceneChange ? payload.payload.number3 : 3, // Use number3 for drift, 3 for journey
+        user_id: userId, // Also include in payload for compatibility
+        number: isDriftSceneChange ? payload.payload.numbaer3 : 3, // Use numbaer3 for drift, 3 for journey
         modalType: isDriftSceneChange ? 'drift' : 'journey',
         uiAction: isDriftSceneChange ? 'change_scene_to_drift' : 'show_journey',
         message: isDriftSceneChange ? 'Scene changed to drift mode' : 'Journey Panel',
@@ -102,6 +107,41 @@ Deno.serve(async (req: Request) => {
 
     console.log('Broadcast result:', broadcastResult)
 
+    // IMPORTANT: Also call the actual Spline webhook if provided
+    let splineCallResult = null;
+    if (payload.webhookUrl && payload.payload) {
+      try {
+        console.log('=== CALLING SPLINE PROXY ===')
+        console.log('Webhook URL:', payload.webhookUrl)
+        console.log('Spline payload:', JSON.stringify(payload.payload, null, 2))
+        
+        const splineProxyResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/spline-proxy`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+          },
+          body: JSON.stringify({
+            webhookUrl: payload.webhookUrl,
+            payload: payload.payload,
+            callingPanel: payload.callingPanel || 'journey-webhook',
+            purpose: payload.purpose || 'scene_change'
+          })
+        });
+        
+        if (splineProxyResponse.ok) {
+          splineCallResult = await splineProxyResponse.json();
+          console.log('✅ Spline proxy call successful:', splineCallResult);
+        } else {
+          console.error('❌ Spline proxy call failed:', splineProxyResponse.status);
+          splineCallResult = { error: `HTTP ${splineProxyResponse.status}` };
+        }
+      } catch (splineError) {
+        console.error('❌ Error calling spline proxy:', splineError);
+        splineCallResult = { error: splineError.message };
+      }
+    }
+
     // Prepare journey-specific response
     const apiResponse = {
       success: true,
@@ -121,7 +161,8 @@ Deno.serve(async (req: Request) => {
         eventType: 'spline_journey_trigger',
         modalType: 'journey',
         uiAction: 'show_journey'
-      }
+      },
+      splineCall: splineCallResult // Include result of actual Spline API call
     }
 
     console.log('=== JOURNEY API RESPONSE ===')
