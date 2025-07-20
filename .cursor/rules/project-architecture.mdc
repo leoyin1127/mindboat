@@ -4,53 +4,99 @@ alwaysApply: true
 # Project Context: Mindboat Application
 
 ## High-Level Overview
-Mindboat is a modern, single-page web application built with React, Vite, and TypeScript. It features a highly stylized user interface with "glass morphism" and ocean theme, leveraging the Spline platform for interactive 3D experiences. The backend is powered by Supabase with serverless functions for webhooks, voice processing, and AI-generated summaries.
+**Mindship** is a voice-first productivity application that transforms scattered ideas into a focused, game-like journey using a sailing metaphor. The app features anonymous authentication, real-time drift detection, AI-powered interventions, and immersive 3D experiences via Spline.
 
-**Core Concept**: A metaphorical "journey" or "voyage" platform for personal goal setting and reflection.
+**Core Concept**: A metaphorical "journey" or "voyage" platform for personal goal setting, task management, and focus coaching with AI assistance.
 
 ## Project Structure
-
-```
 mindboat/
-├── src/                    # Frontend React application source code
-├── supabase/functions/     # Serverless backend functions
-├── public/                 # Static assets (images, 3D models)
-├── dist/                   # Production build output
-├── vite.config.ts         # Vite configuration
-├── tailwind.config.js     # Tailwind CSS configuration
-└── tsconfig.json          # TypeScript configuration
-```
+├── src/ # Frontend React application source code
+├── supabase/functions/ # Serverless backend functions
+├── public/ # Static assets (images, 3D models)
+├── dist/ # Production build output
+├── vite.config.ts # Vite configuration
+├── tailwind.config.js # Tailwind CSS configuration
+└── tsconfig.json # TypeScript configuration
+
 
 ## Frontend Architecture (`mindboat/src`)
 
 ### Entry Points
-- **index.html**: Main HTML page
-- **main.tsx**: React application entry point
-- **App.tsx**: Root component orchestrating the entire user experience, managing state and 3D scene events
+- **index.html**: Main HTML page with Playfair Display and Inter fonts
+- **main.tsx**: React application entry point with StrictMode
+- **App.tsx**: Root component orchestrating the entire user experience, managing authentication state, modal visibility, and 3D scene events
+
+### Authentication System (`mindboat/src/lib/auth.ts`)
+- **Anonymous Authentication**: Device fingerprinting-based user identification
+- **Privacy-First**: No personal data collection, GDPR compliant
+- **Device Fingerprinting**: Browser characteristics for unique identification
+- **Secure Cookie Management**: Encrypted device ID storage
+- **User Context**: Guiding star goals, preferences, session management
 
 ### Component Categories
 
 #### 3D Interaction Components
-- **SplineScene.tsx**: Renders the main 3D scene from Spline
+- **SplineScene.tsx**: Renders the main 3D scene from Spline with user context
 - **SplineEventHandler.tsx**: Bridge between Spline 3D scene and React app
   - Listens for Spline events (clicks, interactions)
+  - Handles real-time database events via Supabase Realtime
   - Translates 3D interactions into app actions (modals, backend calls)
+  - User-specific event filtering to prevent cross-user modal triggers
 
 #### User Flow & Panel Components
 - **WelcomePanel.tsx & WelcomeModal.tsx**: Initial user onboarding with voice recording
+  - Web Speech API integration for voice capture
+  - Real-time transcription display
+  - Error handling for speech recognition
 - **LifeGoalsModal.tsx**: User input interface for life goals (core feature)
+  - Goal setting with Spline webhook integration
 - **JourneyPanel.tsx**: Main dashboard showing tasks, progress, and voyage controls
+  - Task management with drag-and-drop reordering
+  - Media stream management (camera, screen, microphone)
+  - Heartbeat system for drift detection
+  - Session state management
+  - Real-time channel setup for live updates
 - **ControlPanel.tsx**: Voyage controls (microphone/video toggles, end voyage)
+  - Media stream controls
+  - Session management
+  - Drift intervention testing
 - **SailingSummaryPanel.tsx**: Post-voyage summary with generated images and text
+  - AI-generated voyage summaries
+  - Progress visualization
 
 #### Interactive Guidance
 - **SeagullPanel.tsx**: AI assistant/guide component
-  - Voice interaction capabilities
+  - Voice interaction capabilities via Web Speech API
+  - Real-time audio streaming with ElevenLabs TTS
   - Message display and response system
   - Audio recording and processing integration
+  - Conversation state management
+
+#### Media & Permission Components
+- **PermissionPanel.tsx**: Comprehensive permission management
+  - Microphone, camera, and screen sharing permissions
+  - Graceful permission handling with user guidance
+  - Media stream validation and setup
+- **VideoPreview.tsx**: Real-time video preview components
+  - Camera and screen stream display
+  - Responsive video rendering
 
 #### UI Utilities
 - **AnimatedText.tsx**: Text animation effects for polished UI
+  - Mouse tracking animations
+  - Scroll-triggered animations
+  - Customizable delay and trigger options
+
+### Hooks (`mindboat/src/hooks`)
+- **usePassiveListening.ts**: Web Speech API integration for background speech capture
+  - Continuous speech recognition
+  - Session-aware logging
+  - Real-time transcript processing
+
+### Libraries (`mindboat/src/lib`)
+- **auth.ts**: Anonymous authentication system with device fingerprinting
+- **supabase.ts**: Supabase client initialization for backend communication
+- **webhookClient.ts**: Centralized webhook communication with automatic user context injection
 
 ### Styling System (`mindboat/src/styles`)
 - **Framework**: Tailwind CSS (utility-first)
@@ -58,12 +104,17 @@ mindboat/
 - **designSystem.ts**: Helper functions for consistent styling
   - `getButtonStyle()`: Standardized button appearances
   - `getPanelStyle()`: Consistent panel styling
+  - `getIconContainerStyle()`: Icon container styling
+  - `getInnerGlowStyle()`: Inner glow effects
 - **Theme Elements**: Translucent panels, blue gradients, ocean aesthetics
-
-### Libraries (`mindboat/src/lib`)
-- **supabase.ts**: Supabase client initialization for backend communication
+- **Typography**: Playfair Display for headings, Inter for body text
 
 ## Backend Architecture (`mindboat/supabase/functions`)
+
+### Authentication & User Management
+- **Anonymous Auth**: Device fingerprinting-based user identification
+- **User Context**: Guiding star goals, preferences, session tracking
+- **Privacy Compliance**: GDPR-compliant data handling
 
 ### Webhook Functions
 All webhook handlers for frontend interactions:
@@ -74,55 +125,135 @@ All webhook handlers for frontend interactions:
 - **spline-webhook**: Handles 3D scene interactions
 - **welcome-webhook**: Processes welcome/onboarding events
 
-### Service Functions
-- **spline-proxy**: Secure intermediary for Spline API communications
-  - Protects API keys
-  - Handles complex Spline service interactions
-
+### Core Service Functions
+- **session-heartbeat**: Real-time drift detection and focus monitoring
+  - Direct Dify file upload for image analysis
+  - Multimodal AI analysis (camera + screen)
+  - Drift event logging and intervention triggers
 - **voice-interaction**: Core Seagull feature backend
   - Receives audio chunks from frontend
-  - Speech-to-text processing
+  - Speech-to-text processing via Web Speech API
   - AI model integration for responses
-  - Returns processed audio responses
-
+  - Returns processed audio responses via ElevenLabs TTS
 - **sailing-summary**: Post-voyage processing
   - Triggered when user ends voyage
   - AI-generated text summaries
   - AI-generated accompanying images
   - Data preparation for SailingSummaryPanel
+- **spline-proxy**: Secure intermediary for Spline API communications
+  - Protects API keys
+  - Handles complex Spline service interactions
+  - Retry logic with exponential backoff
 
-### Testing
+### Voice & Speech Processing
+- **process-voice**: Voice-to-task conversion
+  - Dify API integration for task extraction
+  - Natural language processing
+  - Task prioritization and categorization
+- **log-passive-speech**: Background speech logging
+  - Session-aware speech storage
+  - Real-time transcript processing
+- **voice-interaction**: Real-time voice chat with Seagull
+  - Web Speech API integration
+  - ElevenLabs TTS for responses
+  - Conversation context management
+
+### Drift Detection & AI Intervention
+- **drift-intervention**: AI-powered focus coaching
+  - Proactive intervention when drift detected
+  - Gentle, non-judgmental AI guidance
+  - Voice-based interaction via ElevenLabs TTS
+- **deep-drift-monitor**: Background drift monitoring
+  - Continuous session monitoring
+  - Intervention trigger management
+  - Multi-session drift analysis
+
+### Testing & Development
 - **test-seagull-webhook**: Dedicated testing function for Seagull logic
+
+### Shared Utilities (`mindboat/supabase/functions/_shared`)
+- **elevenlabs.ts**: ElevenLabs TTS integration
+  - Text-to-speech conversion
+  - Audio streaming capabilities
+  - Voice customization options
+
+## Database Schema (`mindboat/supabase/migrations`)
+
+### Core Tables
+- **users**: Anonymous user management with device fingerprinting
+- **tasks**: Task management with priority and status tracking
+- **sailing_sessions**: Session state and progress tracking
+- **drift_events**: Drift detection and intervention logging
+- **voice_thoughts**: Voice-to-text processing results
+- **ai_conversations**: AI interaction history
+- **frontend_events**: Real-time UI event management
+
+### Supporting Tables
+- **media_files**: Unified media storage management
+- **session_events**: Comprehensive session event logging
+- **daily_summaries**: Aggregated progress tracking
+- **world_map_nodes**: Progress visualization data
+- **animation_queue**: Spline animation trigger management
+
+### Database Functions
+- **get_or_create_user()**: Anonymous user creation/retrieval
+- **set_user_goal()**: Guiding star goal management
+- **start_sailing_session()**: Session initialization
+- **end_sailing_session()**: Session completion with metrics
+- **get_session_stats()**: Real-time session statistics
 
 ## Key Technical Patterns
 
 ### Data Flow
 1. **3D Interaction**: Spline → SplineEventHandler → React State → Backend Webhooks
 2. **Voice Processing**: Frontend Recording → voice-interaction function → AI Processing → Response
-3. **Journey Management**: User Actions → Journey/Control Panels → Backend State → Database
+3. **Drift Detection**: Media Capture → session-heartbeat → Dify Analysis → Intervention
+4. **Session Management**: User Actions → Journey/Control Panels → Backend State → Database
 
 ### State Management
-- Centralized in App.tsx
-- Panel visibility and modal states
-- 3D scene event coordination
-- Backend communication orchestration
+- **Centralized in App.tsx**: Authentication state, modal visibility, 3D scene coordination
+- **Component-Level State**: Media streams, session state, UI interactions
+- **Real-time Updates**: Supabase Realtime for live data synchronization
+- **Persistent State**: Local storage for user preferences, device fingerprinting
 
 ### AI Integration Points
-- Voice-to-text processing in Seagull interactions
-- AI-generated voyage summaries
-- AI-generated summary images
-- Potentially AI-driven goal recommendations
+- **Voice-to-text**: Web Speech API for real-time transcription
+- **Task Extraction**: Dify API for natural language to task conversion
+- **Drift Analysis**: Dify multimodal analysis for focus detection
+- **AI Conversations**: Dify + ElevenLabs for voice-based AI interactions
+- **Summary Generation**: AI-powered session summaries and insights
 
-### API_Key Format
+### Media Handling
+- **WebRTC Integration**: Camera, microphone, and screen sharing
+- **Real-time Processing**: Live video capture for drift detection
+- **Privacy-First**: All raw audio stays on-device
+- **Permission Management**: Comprehensive media permission handling
+
+### Security & Privacy
+- **Anonymous Authentication**: Device fingerprinting without personal data
+- **GDPR Compliance**: Privacy-first data handling
+- **Secure Communication**: Encrypted API communications
+- **Permission-Based Access**: Explicit user consent for media access
+
+## Environment Variables
+
+### Frontend (Vite)
 VITE_SUPABASE_ANON_KEY=your_anon_key
 VITE_SUPABASE_URL=your_url
 VITE_GEMINI_API_KEY=your_gemini_key
-API_KEY=your_dify_api_key
-DIFY_API_URL=your_dify_url
+
+### Backend (Supabase Edge Functions)
+SUPABASE_URL=your_supabase_url
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+DIFY_API_URL=your_dify_api_url
+DIFY_API_KEY=your_dify_api_key
 
 ## Development Notes
-- **Frontend**: React + Vite + TypeScript stack
-- **Backend**: Supabase serverless functions
-- **3D**: Spline platform integration
-- **Styling**: Tailwind CSS with custom design system
-- **Architecture**: Event-driven with webhook-based backend communication
+- **Frontend**: React + Vite + TypeScript stack with Tailwind CSS
+- **Backend**: Supabase serverless functions with Deno runtime
+- **3D**: Spline platform integration for immersive experiences
+- **AI**: Dify for LLM orchestration, ElevenLabs for TTS
+- **Architecture**: Event-driven with real-time updates and webhook-based communication
+- **Authentication**: Anonymous device fingerprinting for privacy-first user identification
+- **Media**: WebRTC for real-time media capture and processing
+- **Voice**: Web Speech API for client-side speech recognition

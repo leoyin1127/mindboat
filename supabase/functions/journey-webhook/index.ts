@@ -57,6 +57,7 @@ Deno.serve(async (req: Request) => {
 
     console.log('=== JOURNEY WEBHOOK CALLED ===')
     console.log('Payload received:', JSON.stringify(payload, null, 2))
+    console.log('Detected type:', payload.payload?.number3 !== undefined ? 'DRIFT_SCENE_CHANGE' : 'JOURNEY_PANEL')
     console.log('Timestamp:', new Date().toISOString())
 
     // Initialize Supabase client
@@ -65,15 +66,20 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // Create the journey event data
+    // Handle different payload types
+    const isDriftSceneChange = payload.payload?.number3 !== undefined;
+
+    console.log('isDriftSceneChange:', isDriftSceneChange)
+    
+    // Create the event data based on payload type
     const eventData = {
-      type: 'spline_journey_trigger',
+      type: isDriftSceneChange ? 'drift_scene_change' : 'spline_journey_trigger',
       payload: {
         ...payload,
-        number: 3, // Explicitly set for compatibility
-        modalType: 'journey',
-        uiAction: 'show_journey',
-        message: 'Journey Panel',
+        number: isDriftSceneChange ? payload.payload.number3 : 3, // Use number3 for drift, 3 for journey
+        modalType: isDriftSceneChange ? 'drift' : 'journey',
+        uiAction: isDriftSceneChange ? 'change_scene_to_drift' : 'show_journey',
+        message: isDriftSceneChange ? 'Scene changed to drift mode' : 'Journey Panel',
         apiEndpoint: 'journey-webhook',
         timestamp: new Date().toISOString(),
         source: 'journey-webhook'
