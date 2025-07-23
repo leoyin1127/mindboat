@@ -181,10 +181,14 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
         console.log('Broadcast payload:', payload)
         
         const eventData = payload.payload
-        const eventUserId = payload.payload?.user_id || eventData?.user_id
+        // Try multiple locations for user_id to be robust
+        const eventUserId = payload.payload?.user_id || eventData?.user_id || payload.user_id
         
         console.log('Broadcast event data:', eventData)
         console.log('Broadcast user_id:', eventUserId)
+        console.log('🔍 DEBUG: payload.payload?.user_id:', payload.payload?.user_id)
+        console.log('🔍 DEBUG: payload.user_id:', payload.user_id)
+        console.log('🔍 DEBUG: eventData?.user_id:', eventData?.user_id)
         
         // Filter events by current user
         if (eventUserId && currentUser?.id && eventUserId !== currentUser.id) {

@@ -29,8 +29,8 @@ const corsHeaders = {
 }
 
 // Dify API configuration for FR-2.4
-const DIFY_API_URL = 'http://164579e467f4.ngrok-free.app/v1/chat-messages'
-const DIFY_API_KEY = 'app-qmEU3fWhfK2Io7dGFNULFZs0'
+const DIFY_API_URL = Deno.env.get('DIFY_API_URL') ?? ''
+const DIFY_API_KEY = Deno.env.get('FR24_DIFY_API_KEY') ?? ''
 
 interface DriftInterventionRequest {
     session_id: string
@@ -192,7 +192,7 @@ Deno.serve(async (req: Request) => {
         console.log('Dify payload:', JSON.stringify(difyPayload, null, 2))
 
         // Step 4: Call Dify API
-        const difyResponse = await fetch(DIFY_API_URL, {
+        const difyResponse = await fetch(`${DIFY_API_URL}/v1/chat-messages`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${DIFY_API_KEY}`,

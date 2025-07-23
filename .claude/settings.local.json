@@ -12,7 +12,8 @@
       "Bash(git push:*)",
       "mcp__supabase__list_edge_functions",
       "mcp__supabase__get_logs",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(curl:*)"
     ],
     "deny": []
   },

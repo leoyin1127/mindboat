@@ -21,6 +21,7 @@ const corsHeaders = {
 
 interface TestSeagullWebhookPayload {
   numbaer5?: number;
+  user_id?: string;
   [key: string]: any;
 }
 
@@ -61,6 +62,9 @@ Deno.serve(async (req: Request) => {
     console.log('Payload received:', JSON.stringify(payload, null, 2))
     console.log('Timestamp:', new Date().toISOString())
     console.log('Expected numbaer5 value:', payload.numbaer5)
+    console.log('Raw payload keys:', Object.keys(payload))
+    console.log('Raw payload user_id:', payload.user_id)
+    console.log('Raw payload user_id type:', typeof payload.user_id)
 
     // Initialize Supabase client
     const supabase = createClient(
@@ -68,11 +72,25 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
+    // Extract user_id from payload
+    const userId = payload.user_id
+    
+    console.log('🔍 User ID extracted:', userId)
+    console.log('🔍 User ID type:', typeof userId)
+    console.log('🔍 User ID is truthy:', !!userId)
+    
+    if (!userId) {
+      console.warn('⚠️ No user_id provided in test seagull webhook payload')
+      console.warn('⚠️ Full payload for debugging:', JSON.stringify(payload, null, 2))
+    }
+    
     // Create the seagull event data with test-specific source
     const eventData = {
       type: 'spline_seagull_trigger',
+      user_id: userId, // Also place user_id at top level for easier access
       payload: {
         ...payload,
+        user_id: userId, // Ensure user_id is included in payload
         modalType: 'seagull',
         uiAction: 'show_seagull',
         message: 'Test Captain Voice Assistant Activated',

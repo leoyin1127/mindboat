@@ -234,16 +234,24 @@ function App() {
         <button
           onClick={async () => {
             try {
+              console.log('🐋 DEBUG: Current user object:', currentUser);
+              console.log('🐋 DEBUG: Current user ID:', currentUser?.id);
+              console.log('🐋 DEBUG: Current user ID type:', typeof currentUser?.id);
+              
+              const payload = { 
+                numbaer5: 0,
+                user_id: currentUser?.id
+              };
+              
+              console.log('🐋 DEBUG: Payload being sent:', payload);
+              
               const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/test-seagull-webhook`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
                   'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
                 },
-                body: JSON.stringify({ 
-                  numbaer5: 0,
-                  user_id: currentUser?.id
-                })
+                body: JSON.stringify(payload)
               });
 
               if (response.ok) {

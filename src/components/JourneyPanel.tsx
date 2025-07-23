@@ -87,6 +87,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
   const [showPermissionPanel, setShowPermissionPanel] = useState(false);
   const [showSeagullPanel, setShowSeagullPanel] = useState(false);
   const [seagullMessage, setSeagullMessage] = useState<string>('');
+  const [seagullConversationContext, setSeagullConversationContext] = useState<any>(null);
 
   // Sailing session state
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -962,11 +963,23 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
       .on('broadcast', { event: 'deep_drift_detected' }, (payload) => {
         console.log('🚨 Deep drift detected, triggering AI intervention:', payload);
 
-        // Trigger SeagullPanel with intervention message
+        // Trigger SeagullPanel with intervention message and conversation context
         const interventionMessage = payload.payload?.message ||
           `Captain, I've noticed you've been drifting for ${payload.payload?.consecutive_drifts || 5} minutes. Let's get back on course together.`;
 
+        // Store conversation context for continuous conversation
+        const conversationContext = {
+          type: 'drift_intervention',
+          sessionId: currentSessionId,
+          consecutiveDrifts: payload.payload?.consecutive_drifts,
+          conversationId: payload.payload?.conversation_id,
+          messageId: payload.payload?.message_id,
+          userId: currentUser?.id,
+          isDriftIntervention: true
+        };
+
         setSeagullMessage(interventionMessage);
+        setSeagullConversationContext(conversationContext);
         setShowSeagullPanel(true);
 
         // Play TTS audio if available (FR-2.4)
@@ -980,7 +993,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
           }
         }
 
-        console.log('🦅 Seagull intervention activated');
+        console.log('🦅 Seagull drift intervention activated with continuous conversation enabled');
       })
       .subscribe((status) => {
         console.log('Realtime channel status:', status);
@@ -1763,8 +1776,10 @@ ${sessionEndData.ai_analysis.distraction_analysis}`
         onClose={() => {
           setShowSeagullPanel(false);
           setSeagullMessage('');
+          setSeagullConversationContext(null);
         }}
         message={seagullMessage}
+        conversationContext={seagullConversationContext}
       />
 
       {/* Drift Notification - Shows after 5 seconds when drifting */}

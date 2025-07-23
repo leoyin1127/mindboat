@@ -21,6 +21,7 @@ const corsHeaders = {
 
 interface SeagullWebhookPayload {
   numbaer5?: number;
+  user_id?: string;
   [key: string]: any;
 }
 
@@ -68,11 +69,20 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
+    // Extract user_id from payload
+    const userId = payload.user_id
+    
+    if (!userId) {
+      console.warn('⚠️ No user_id provided in seagull webhook payload')
+    }
+    
     // Create the seagull event data
     const eventData = {
       type: 'spline_seagull_trigger',
+      user_id: userId, // Also place user_id at top level for easier access
       payload: {
         ...payload,
+        user_id: userId, // Ensure user_id is included in payload
         modalType: 'seagull',
         uiAction: 'show_seagull',
         message: 'Captain Voice Assistant Activated',
