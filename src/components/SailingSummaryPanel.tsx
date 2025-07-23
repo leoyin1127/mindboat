@@ -1,10 +1,13 @@
 import React from 'react';
 import { X, ExternalLink } from 'lucide-react';
 import { designSystem } from '../styles/designSystem';
+import { JourneyVisualization } from './JourneyVisualization';
 
 interface SailingSummaryData {
   imageUrl: string;
   summaryText: string;
+  focusTimeMinutes?: number;
+  totalMinutes?: number;
 }
 
 interface SailingSummaryPanelProps {
@@ -66,30 +69,16 @@ export const SailingSummaryPanel: React.FC<SailingSummaryPanelProps> = ({
             {/* Content - Two column layout with title in right column */}
             {!isLoading && (
               <div className="flex gap-10 relative z-10">
-                {/* Left column - Image only */}
+                {/* Left column - Journey Visualization */}
                 <div className="flex-1">
                   <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-white/10 to-white/5 
                                   border border-white/20 shadow-lg aspect-[4/3]">
-                    {summaryData?.imageUrl ? (
-                      <img
-                        src={summaryData.imageUrl}
-                        alt="Journey visualization"
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          // Fallback to placeholder if image fails to load
-                          const target = e.target as HTMLImageElement;
-                          target.src = 'https://images.pexels.com/photos/1001682/pexels-photo-1001682.jpeg?auto=compress&cs=tinysrgb&w=800';
-                        }}
-                      />
-                    ) : (
-                      // Placeholder image while waiting for backend data
-                      <img
-                        src="https://images.pexels.com/photos/1001682/pexels-photo-1001682.jpeg?auto=compress&cs=tinysrgb&w=800"
-                        alt="Journey placeholder"
-                        className="w-full h-full object-cover"
-                      />
-                    )}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
+                    <JourneyVisualization
+                      focusTimeMinutes={summaryData?.focusTimeMinutes || 30}
+                      totalMinutes={summaryData?.totalMinutes || 60}
+                      className="w-full h-full"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent pointer-events-none"></div>
                   </div>
                 </div>
 
