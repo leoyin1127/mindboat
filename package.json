@@ -1,5 +1,5 @@
 {
-  "name": "mindboat",
+  "name": "vite-react-typescript-starter",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,14 +10,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@splinetool/react-spline": "^4.0.0",
+    "@stagewise-plugins/react": "^0.6.0",
+    "@stagewise/toolbar-react": "^0.6.0",
     "@supabase/supabase-js": "^2.39.0",
-    "framer-motion": "^10.16.16",
     "lucide-react": "^0.344.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.20.1",
-    "tone": "^14.7.77",
-    "zustand": "^4.4.7"
+    "supabase": "^2.31.4"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",

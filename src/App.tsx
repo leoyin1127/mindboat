@@ -1,284 +1,279 @@
-import React, { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthForm } from './components/auth/AuthForm';
-import { LighthouseGoal } from './components/onboarding/LighthouseGoal';
-import { CreateDestination } from './components/onboarding/CreateDestination';
-import { VoyagePreparation } from './components/sailing/VoyagePreparation';
-import { SailingMode } from './components/sailing/SailingMode';
-import { VoyageComplete } from './components/sailing/VoyageComplete';
-import { GrandMap } from './components/visualization/GrandMap';
-import { NotificationSystem } from './components/ui/NotificationSystem';
-import { useUserStore } from './stores/userStore';
-import { useDestinationStore } from './stores/destinationStore';
-import { useVoyageStore } from './stores/voyageStore';
-import { useNotificationStore } from './stores/notificationStore';
-import type { Destination } from './types';
-import { setupDebugTool } from './utils/debugDistraction';
-
-type AppState = 'auth' | 'lighthouse' | 'destinations' | 'voyage-prep' | 'sailing' | 'voyage-complete' | 'map';
+import React from 'react';
+import { SplineScene } from './components/SplineScene';
+import { SplineEventHandler } from './components/SplineEventHandler';
+import { auth, type AnonymousUser } from './lib/auth';
+import { webhookClient } from './lib/webhookClient';
+import { StagewiseToolbar } from '@stagewise/toolbar-react';
+import ReactPlugin from '@stagewise-plugins/react';
 
 function App() {
-  const {
-    user,
-    lighthouseGoal,
-    initialize,
-    debugDistractionFlow,
-    isLoading,
-    isAuthenticated,
-    authMode,
-    error: authError
-  } = useUserStore();
+  const [isModalOpen, setIsModalOpen] = React.useState(false);
+  const [currentUser, setCurrentUser] = React.useState<AnonymousUser | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = React.useState(true);
+  const [authError, setAuthError] = React.useState<string | null>(null);
 
-  const { destinations, loadDestinations } = useDestinationStore();
-  const { currentVoyage, voyageHistory, startVoyage, endVoyage } = useVoyageStore();
-  const { showSuccess, showError } = useNotificationStore();
+  // Initialize anonymous authentication on app load
+  React.useEffect(() => {
+    const initAuth = async () => {
+      try {
+        setIsAuthLoading(true);
+        setAuthError(null);
 
-  const [appState, setAppState] = useState<AppState>('auth');
-  const [selectedDestination, setSelectedDestination] = useState<Destination | null>(null);
-  const [completedVoyageId, setCompletedVoyageId] = useState<string | null>(null);
-  const [initializationComplete, setInitializationComplete] = useState(false);
+        console.log('🔐 Initializing anonymous authentication...');
+        const user = await auth.initialize();
+        setCurrentUser(user);
 
-  // Initialize the app
-  useEffect(() => {
-    const initApp = async () => {
-      await initialize();
-      setInitializationComplete(true);
+        console.log('✅ Anonymous authentication successful:', {
+          userId: user.id,
+          deviceFingerprint: user.deviceFingerprint.slice(0, 8) + '...',
+          guidingStar: user.guidingStar,
+          isFirstTime: !user.guidingStar
+        });
+
+      } catch (error) {
+        console.error('❌ Authentication failed:', error);
+        setAuthError(error instanceof Error ? error.message : 'Authentication failed');
+      } finally {
+        setIsAuthLoading(false);
+      }
     };
 
-    initApp();
-  }, [initialize]);
+    initAuth();
+  }, []);
 
-  // Debug
-  useEffect(() => {
-    if (import.meta.env.DEV) {
-      setupDebugTool();
-    }
-  }, [debugDistractionFlow]);
+  const handleSplineEvent = (event: unknown) => {
+    console.log('Spline event received in App:', event);
+    // You can add custom logic here to handle different types of events
+    // For example, trigger different animations or UI changes based on event.payload
+  };
 
-  // Handle state transitions after initialization
-  useEffect(() => {
-    if (!initializationComplete) return;
+  // 监听模态框状态变化
+  React.useEffect(() => {
+    const handleModalStateChange = (event: CustomEvent) => {
+      setIsModalOpen(event.detail.isOpen);
+    };
 
-    if (isAuthenticated && user) {
-      // Only show welcome notification for non-demo mode and don't repeat
-      if (authMode === 'supabase' && !localStorage.getItem('welcome-shown')) {
-        showSuccess(
-          `Welcome back, ${user.email}!`,
-          'Successfully signed in'
-        );
-        localStorage.setItem('welcome-shown', 'true');
-      }
+    window.addEventListener('modalStateChange', handleModalStateChange as EventListener);
 
-      // Load user data
-      if (authMode === 'supabase') {
-        loadDestinations(user.id);
-      }
+    return () => {
+      window.removeEventListener('modalStateChange', handleModalStateChange as EventListener);
+    };
+  }, []);
 
-      // Determine app state based on user progress and current voyage
-      if (!lighthouseGoal) {
-        setAppState('lighthouse');
-      } else if (currentVoyage && appState !== 'sailing') {
-        // If there's an active voyage and we're not already in sailing mode
-        setAppState('sailing');
-      } else if (appState === 'auth') {
-        // Only set to voyage-prep if we're coming from auth
-        setAppState('voyage-prep');
-      }
-    } else {
-      setAppState('auth');
-    }
-  }, [isAuthenticated, user, lighthouseGoal, currentVoyage, authMode, initializationComplete]);
-
-  // Show auth errors as notifications (keep this as it's important)
-  useEffect(() => {
-    if (authError && initializationComplete) {
-      showError(authError, 'Authentication Error');
-    }
-  }, [authError, initializationComplete, showError]);
-
-  // Show loading screen during initialization
-  if (!initializationComplete || isLoading) {
+  // Show loading state while authentication is initializing
+  if (isAuthLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-900 to-indigo-900 flex items-center justify-center">
+      <div className="h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 to-black">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <div className="text-white text-xl">
-            {isLoading ? 'Loading...' : 'Initializing MindBoat...'}
-          </div>
-          {authError && (
-            <div className="mt-4 text-red-300 text-sm max-w-md">
-              {authError}
-            </div>
-          )}
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-white mx-auto mb-4"></div>
+          <p className="text-white/80 text-lg font-inter">Initializing Mindship...</p>
         </div>
       </div>
     );
   }
 
-  const handleAuthSuccess = () => {
-    if (!lighthouseGoal) {
-      setAppState('lighthouse');
-    } else {
-      setAppState('voyage-prep');
-    }
-  };
-
-  const handleLighthouseComplete = () => {
-    // Remove success notification - completing the form is its own reward
-
-    // Skip destinations if user already has some, go straight to voyage prep
-    if (destinations.length > 0) {
-      setAppState('voyage-prep');
-    } else {
-      setAppState('destinations');
-    }
-  };
-
-  const handleDestinationsComplete = () => {
-    // Remove success notification - creating destinations is self-evident
-    setAppState('voyage-prep');
-  };
-
-  const handleStartVoyage = async (destination: Destination, plannedDuration: number) => {
-    if (!user) return;
-
-    setSelectedDestination(destination);
-
-    try {
-      // Start the voyage in the store
-      await startVoyage(destination.id, user.id, plannedDuration);
-
-      // Remove verbose success notification - starting voyage is self-evident
-
-      // Transition to sailing mode
-      setAppState('sailing');
-    } catch (error) {
-      console.error('Failed to start voyage:', error);
-      showError(
-        'Failed to start your voyage. Please try again.',
-        'Voyage Error'
-      );
-    }
-  };
-
-  const handleEndVoyage = async () => {
-    if (currentVoyage && selectedDestination) {
-      // Capture distraction count before ending voyage (since endVoyage resets store state)
-      const { distractionCount } = useVoyageStore.getState();
-
-      try {
-        // End the voyage in the store
-        const updatedVoyage = await endVoyage();
-
-        // Remove verbose success notification - voyage completion is self-evident
-
-        // Set completed voyage data for the completion screen
-        if (updatedVoyage) {
-          setCompletedVoyageId(updatedVoyage.id);
-        } else {
-          // Fallback: use current voyage ID
-          setCompletedVoyageId(currentVoyage.id);
-        }
-
-        // Transition to voyage complete screen
-        setAppState('voyage-complete');
-      } catch (error) {
-        console.error('Failed to end voyage:', error);
-        showError(
-          'Failed to complete your voyage. Please try again.',
-          'Voyage Error'
-        );
-      }
-    }
-  };
-
-  const handleVoyageCompleteNext = () => {
-    setAppState('map');
-  };
-
-  const handleBackToPrep = () => {
-    setSelectedDestination(null);
-    setCompletedVoyageId(null);
-    setAppState('voyage-prep');
-  };
-
-  const handleViewMap = () => {
-    setAppState('map');
-  };
-
-  const handleManageDestinations = () => {
-    setAppState('destinations');
-  };
-
-  return (
-    <div className="App">
-      {appState === 'auth' && (
-        <AuthForm onSuccess={handleAuthSuccess} />
-      )}
-
-      {appState === 'lighthouse' && (
-        <LighthouseGoal onComplete={handleLighthouseComplete} />
-      )}
-
-      {appState === 'destinations' && (
-        <CreateDestination onComplete={handleDestinationsComplete} />
-      )}
-
-      {appState === 'voyage-prep' && (
-        <VoyagePreparation
-          onStartVoyage={handleStartVoyage}
-          onViewMap={handleViewMap}
-          onManageDestinations={handleManageDestinations}
-        />
-      )}
-
-      {appState === 'sailing' && selectedDestination && (
-        <SailingMode
-          destination={selectedDestination}
-          onEndVoyage={handleEndVoyage}
-        />
-      )}
-
-      {appState === 'voyage-complete' && completedVoyageId && (
-        <VoyageComplete
-          voyageId={completedVoyageId}
-          onContinue={handleVoyageCompleteNext}
-        />
-      )}
-
-      {appState === 'map' && (
-        <GrandMap onBack={handleBackToPrep} />
-      )}
-
-      {/* Global Notification System */}
-      <NotificationSystem />
-
-      {/* Sponsors and Hackathon Footer */}
-      <footer className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-sm shadow-lg p-3 z-50">
-        <div className="container mx-auto flex flex-wrap justify-center items-center gap-6">
-          <div className="text-sm text-gray-500 font-medium">Powered by:</div>
-          <a href="https://bolt.new/" target="_blank" rel="noopener noreferrer" className="transition-transform hover:scale-110">
-            <img src="/anthropic.svg" alt="Anthropic Logo" className="h-8" />
-          </a>
-          <a href="https://bolt.new/" target="_blank" rel="noopener noreferrer" className="transition-transform hover:scale-110">
-            <img src="/11labs.svg" alt="ElevenLabs Logo" className="h-8" />
-          </a>
-          <a href="https://bolt.new/" target="_blank" rel="noopener noreferrer" className="transition-transform hover:scale-110">
-            <img src="/logo-color.svg" alt="Hackathon Logo" className="h-8" />
-          </a>
-          <a href="https://bolt.new/" target="_blank" rel="noopener noreferrer" className="transition-transform hover:scale-110">
-            <img src="/logo-color2.svg" alt="Hackathon Logo" className="h-8" />
-          </a>
-          <a href="https://bolt.new/" target="_blank" rel="noopener noreferrer" className="transition-transform hover:scale-110">
-            <img src="/logo-color3.svg" alt="Hackathon Logo" className="h-8" />
-          </a>
-          <div className="text-xs text-gray-400">
-            <a href="https://bolt.new/" target="_blank" rel="noopener noreferrer" className="hover:text-blue-500 underline">
-              Built with Bolt.new
-            </a>
-          </div>
+  // Show error state if authentication failed
+  if (authError) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-gradient-to-br from-red-900 to-black">
+        <div className="text-center max-w-md mx-auto p-8">
+          <div className="text-red-400 text-6xl mb-4">⚠️</div>
+          <h1 className="text-white text-2xl font-playfair mb-4">Authentication Error</h1>
+          <p className="text-white/80 text-lg font-inter mb-6">{authError}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="bg-white/10 backdrop-blur-md border border-white/20 hover:bg-white/20 text-white px-6 py-3 rounded-xl transition-all duration-300"
+          >
+            Retry
+          </button>
         </div>
-      </footer>
+      </div>
+    );
+  }
+
+  // Show main app once authentication is successful
+  return (
+    <div className="relative h-screen">
+      {/* Stagewise Toolbar - only in development */}
+      <StagewiseToolbar
+        config={{
+          plugins: [ReactPlugin],
+        }}
+      />
+
+      {/* Authentication Debug Info (only in development) */}
+      {import.meta.env.DEV && currentUser && (
+        <div className="fixed top-4 left-4 z-50 bg-black/80 text-white p-3 rounded-lg text-xs font-mono">
+          <div>User ID: {currentUser.id.slice(0, 8)}...</div>
+          <div>Fingerprint: {currentUser.deviceFingerprint.slice(0, 12)}...</div>
+          <div>Goal: {currentUser.guidingStar || 'Not set'}</div>
+        </div>
+      )}
+
+      {/* 3D Scene Background - 传递交互禁用状态 */}
+      <SplineScene isInteractionDisabled={isModalOpen} currentUser={currentUser} />
+
+      {/* Spline Event Handler - handles real-time events from Spline */}
+      <SplineEventHandler
+        onEventReceived={handleSplineEvent}
+        onModalStateChange={setIsModalOpen}
+        currentUser={currentUser}
+      />
+
+      {/* Subtle gradient overlay for depth */}
+      <div className="fixed inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/20 pointer-events-none z-10"></div>
+
+      {/* Temporary Test Buttons - positioned at bottom right */}
+      <div className="fixed bottom-4 right-4 z-30 flex flex-col gap-2">
+        {/* Start Journey Button (replaces Spline start button) */}
+        <button
+          onClick={async () => {
+            try {
+              const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/journey-webhook`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                },
+                body: JSON.stringify({
+                  user_id: currentUser?.id
+                })
+              });
+
+              if (response.ok) {
+                console.log('Journey webhook triggered successfully');
+              } else {
+                console.error('Failed to trigger journey webhook');
+              }
+            } catch (error) {
+              console.error('Error triggering journey webhook:', error);
+            }
+          }}
+          className="px-4 py-2 bg-gradient-to-br from-blue-500/20 via-blue-400/15 to-blue-300/10
+                     hover:from-blue-500/30 hover:via-blue-400/25 hover:to-blue-300/20
+                     text-white rounded-xl transition-all duration-300
+                     border border-blue-400/30 hover:border-blue-400/50
+                     font-inter font-medium text-sm backdrop-blur-md
+                     shadow-[0_4px_16px_rgba(0,0,0,0.1),0_1px_4px_rgba(0,0,0,0.06)]
+                     transform hover:scale-[1.02] active:scale-[0.98]"
+        >
+          🚀 Start Journey
+        </button>
+
+        {/* Welcome Button */}
+        <button
+          onClick={async () => {
+            try {
+              const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/welcome-webhook`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                },
+                body: JSON.stringify({
+                  user_id: currentUser?.id
+                })
+              });
+
+              if (response.ok) {
+                console.log('Welcome webhook triggered successfully');
+              } else {
+                console.error('Failed to trigger welcome webhook');
+              }
+            } catch (error) {
+              console.error('Error triggering welcome webhook:', error);
+            }
+          }}
+          className="px-4 py-2 bg-gradient-to-br from-green-500/20 via-green-400/15 to-green-300/10
+                     hover:from-green-500/30 hover:via-green-400/25 hover:to-green-300/20
+                     text-white rounded-xl transition-all duration-300
+                     border border-green-400/30 hover:border-green-400/50
+                     font-inter font-medium text-sm backdrop-blur-md
+                     shadow-[0_4px_16px_rgba(0,0,0,0.1),0_1px_4px_rgba(0,0,0,0.06)]
+                     transform hover:scale-[1.02] active:scale-[0.98]"
+        >
+          👋 Welcome
+        </button>
+
+        {/* Goals Button */}
+        <button
+          onClick={async () => {
+            try {
+              const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/goals-webhook`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                },
+                body: JSON.stringify({
+                  user_id: currentUser?.id
+                })
+              });
+
+              if (response.ok) {
+                console.log('Goals webhook triggered successfully');
+              } else {
+                console.error('Failed to trigger goals webhook');
+              }
+            } catch (error) {
+              console.error('Error triggering goals webhook:', error);
+            }
+          }}
+          className="px-4 py-2 bg-gradient-to-br from-purple-500/20 via-purple-400/15 to-purple-300/10
+                     hover:from-purple-500/30 hover:via-purple-400/25 hover:to-purple-300/20
+                     text-white rounded-xl transition-all duration-300
+                     border border-purple-400/30 hover:border-purple-400/50
+                     font-inter font-medium text-sm backdrop-blur-md
+                     shadow-[0_4px_16px_rgba(0,0,0,0.1),0_1px_4px_rgba(0,0,0,0.06)]
+                     transform hover:scale-[1.02] active:scale-[0.98]"
+        >
+          🎯 Goals
+        </button>
+
+        {/* Seagull Button */}
+        <button
+          onClick={async () => {
+            try {
+              console.log('🐋 DEBUG: Current user object:', currentUser);
+              console.log('🐋 DEBUG: Current user ID:', currentUser?.id);
+              console.log('🐋 DEBUG: Current user ID type:', typeof currentUser?.id);
+              
+              const payload = { 
+                numbaer5: 0,
+                user_id: currentUser?.id
+              };
+              
+              console.log('🐋 DEBUG: Payload being sent:', payload);
+              
+              const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/test-seagull-webhook`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                },
+                body: JSON.stringify(payload)
+              });
+
+              if (response.ok) {
+                console.log('Test seagull webhook triggered successfully');
+              } else {
+                console.error('Failed to trigger test webhook');
+              }
+            } catch (error) {
+              console.error('Error triggering test webhook:', error);
+            }
+          }}
+          className="px-4 py-2 bg-gradient-to-br from-white/15 via-white/10 to-white/8
+                     hover:from-white/20 hover:via-white/15 hover:to-white/12
+                     text-white rounded-xl transition-all duration-300
+                     border border-white/25 hover:border-white/35
+                     font-inter font-medium text-sm backdrop-blur-md
+                     shadow-[0_4px_16px_rgba(0,0,0,0.1),0_1px_4px_rgba(0,0,0,0.06)]
+                     transform hover:scale-[1.02] active:scale-[0.98]"
+        >
+          🐦 Talk to Seagull
+        </button>
+      </div>
     </div>
   );
 }
