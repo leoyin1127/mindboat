@@ -26,7 +26,7 @@ async function uploadImageToDify(imageB64, userId, type, difyApiUrl, difyApiKey)
       throw new Error(`Image too large: ${(imageBlob.size / 1024 / 1024).toFixed(2)} MB (max 3 MB)`);
     }
     // 2. Construct the Dify file upload URL
-    const uploadUrl = `${difyApiUrl}files/upload`;
+    const uploadUrl = `${difyApiUrl}/v1/files/upload`;
     console.log('uploadUrl', uploadUrl);
     console.log('difyApiURL', difyApiUrl);
     console.log('difyApiKey', difyApiKey);
@@ -55,64 +55,7 @@ async function uploadImageToDify(imageB64, userId, type, difyApiUrl, difyApiKey)
     return null;
   }
 }
-// COMMENTED OUT: Helper function to upload image to Supabase Storage and return public URL
-// async function uploadImageToStorage(
-//   supabase: any, 
-//   imageB64: string, 
-//   userId: string, 
-//   type: 'camera' | 'screen'
-// ): Promise<string | null> {
-//   try {
-//     // 1. Convert base64 Data URL to a Blob (reusing existing dataUrlToBlob)
-//     const imageBlob = dataUrlToBlob(imageB64)
-//     
-//     console.log(`📤 Uploading ${type} image to storage - Size: ${(imageBlob.size / 1024 / 1024).toFixed(2)} MB`)
-//     
-//     // Size guard - reject if over 3 MB
-//     if (imageBlob.size > 3 * 1024 * 1024) {
-//       throw new Error(`Image too large: ${(imageBlob.size / 1024 / 1024).toFixed(2)} MB (max 3 MB)`)
-//     }
-//     
-//     // 2. Define a unique, organized file path
-//     const filePath = `${userId}/${type}-${Date.now()}.png`
-//     // 3. Upload the file to Supabase Storage
-//     const { error: uploadError } = await supabase.storage
-//       .from('heartbeat-images')
-//       .upload(filePath, imageBlob)
-//     if (uploadError) {
-//       console.error(`Storage upload failed for ${type}:`, uploadError)
-//       return null
-//     }
-//     // 4. Get the public URL of the successfully uploaded file
-//     const { data } = supabase.storage
-//       .from('heartbeat-images')
-//       .getPublicUrl(filePath)
-//     console.log(`✅ ${type} image uploaded successfully to: ${data.publicUrl}`)
-//     return data.publicUrl
-//   } catch (error) {
-//     console.error(`❌ Storage upload failed for ${type} image:`, error)
-//     return null
-//   }
-// }
-// COMMENTED OUT: Helper function to clean up uploaded images in case of Dify API failure
-// async function cleanupUploadedImages(supabase: any, imageUrls: string[]) {
-//   for (const url of imageUrls) {
-//     if (!url) continue
-//     try {
-//       // Extract file path from public URL
-//       const urlParts = url.split('/storage/v1/object/public/heartbeat-images/')
-//       if (urlParts.length > 1) {
-//         const filePath = urlParts[1]
-//         await supabase.storage
-//           .from('heartbeat-images')
-//           .remove([filePath])
-//         console.log(`🧹 Cleaned up image: ${filePath}`)
-//       }
-//     } catch (error) {
-//       console.error('Error cleaning up image:', error)
-//     }
-//   }
-// }
+
 serve(async (req)=>{
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -132,7 +75,8 @@ serve(async (req)=>{
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     // Get Dify API configuration
     const difyApiUrl = Deno.env.get('DIFY_API_URL');
-    const difyApiKey = Deno.env.get('DIFY_API_KEY');
+    const difyApiKey = Deno.env.get('FR25_DIFY_API_KEY');
+    // console.log('heartbeat difyapikey', difyApiKey);
     if (!difyApiUrl || !difyApiKey) {
       throw new Error('Dify API configuration missing');
     }
@@ -281,7 +225,7 @@ serve(async (req)=>{
     let difyResult;
     // Note: No need to track uploaded URLs for cleanup since files are managed by Dify
     try {
-      const url = `${difyApiUrl}workflows/run`;
+      const url = `${difyApiUrl}/v1/workflows/run`;
       const difyResponse = await fetch(url, {
         method: 'POST',
         headers: {
