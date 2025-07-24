@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mic, MicOff, Video, VideoOff, Monitor, MonitorOff, Anchor, TestTube, Headphones } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, Monitor, MonitorOff, Anchor, TestTube, Headphones, Play } from 'lucide-react';
 
 interface ControlPanelProps {
   isVisible: boolean;
@@ -16,6 +16,9 @@ interface ControlPanelProps {
   onToggleMic?: () => void;
   onToggleVideo?: () => void;
   onToggleScreenShare?: () => void;
+  // Drift control props
+  isDrifting?: boolean;
+  onContinueWorking?: () => void;
 }
 
 export const ControlPanel: React.FC<ControlPanelProps> = ({
@@ -31,9 +34,14 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   isSpeechDetected = false,
   onToggleMic,
   onToggleVideo,
-  onToggleScreenShare
+  onToggleScreenShare,
+  isDrifting = false,
+  onContinueWorking
 }) => {
   if (!isVisible) return null;
+
+  // Debug log
+  console.log('ControlPanel - isDrifting:', isDrifting, 'onContinueWorking:', !!onContinueWorking);
 
   const handleToggleMic = () => {
     onToggleMic?.();
@@ -225,6 +233,35 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               {!isScreenSharing && <span className="block text-xs text-white/70 mt-1">Auto-enabled if granted in permission panel</span>}
             </span>
           </button>
+
+          {/* Continue Working Button - Shows when drifting */}
+          {isDrifting && (
+            <button
+              onClick={onContinueWorking || (() => console.log('Continue Working clicked but no handler'))}
+              className="w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 
+                         backdrop-blur-md border shadow-lg relative overflow-visible group
+                         bg-gradient-to-br from-blue-500/30 via-blue-400/25 to-blue-600/35 
+                         border-blue-400/40 hover:from-blue-500/40 hover:via-blue-400/35 hover:to-blue-600/45
+                         shadow-blue-400/20 hover:shadow-blue-400/30"
+            >
+              {/* Button inner glow */}
+              <div className="absolute inset-0 rounded-2xl transition-opacity duration-300 
+                              bg-gradient-to-br from-blue-300/30 to-blue-500/30"></div>
+
+              <Play className="w-5 h-5 text-white relative z-10" />
+
+              {/* Custom hover tooltip */}
+              <span className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-1.5 
+                             bg-gradient-to-br from-white/15 via-white/10 to-white/8 
+                             backdrop-blur-md border border-white/25 rounded-md 
+                             text-sm text-white/90 whitespace-nowrap 
+                             opacity-0 invisible group-hover:opacity-100 group-hover:visible 
+                             transition-all duration-300 z-20
+                             shadow-[0_4px_16px_rgba(0,0,0,0.1),0_1px_4px_rgba(0,0,0,0.06)]">
+                Continue Working
+              </span>
+            </button>
+          )}
 
           {/* Passive Listening Indicator - FR-2.2 */}
           <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 

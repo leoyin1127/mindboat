@@ -34,23 +34,54 @@ serve(async (req) => {
 
     console.log('🔍 Starting deep drift monitoring check...')
 
-    // Step 1: Find all sessions currently in 'drifting' state
-    const { data: driftingSessions, error: sessionError } = await supabase
+    // Step 1: Find all active sessions that have recent drift events
+    // First get active sessions
+    const { data: activeSessions, error: sessionError } = await supabase
       .from('sailing_sessions')
       .select('id, user_id, state')
-      .eq('state', 'drifting')
+      .eq('state', 'active')
 
     if (sessionError) {
-      throw new Error(`Error fetching drifting sessions: ${sessionError.message}`)
+      throw new Error(`Error fetching active sessions: ${sessionError.message}`)
     }
 
-    if (!driftingSessions || driftingSessions.length === 0) {
+    if (!activeSessions || activeSessions.length === 0) {
+      console.log('✅ No active sessions found')
+      return new Response(JSON.stringify({
+        success: true,
+        message: 'No active sessions to monitor',
+        interventions_triggered: 0,
+        sessions_checked: 0
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200
+      })
+    }
+
+    // Now check which active sessions are currently drifting
+    const driftingSessions = []
+    for (const session of activeSessions) {
+      // Get the most recent drift event for this session
+      const { data: latestDrift, error: driftError } = await supabase
+        .from('drift_events')
+        .select('is_drifting')
+        .eq('session_id', session.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+
+      if (!driftError && latestDrift?.is_drifting) {
+        driftingSessions.push(session)
+      }
+    }
+
+    if (driftingSessions.length === 0) {
       console.log('✅ No drifting sessions found - all users are focused!')
       return new Response(JSON.stringify({
         success: true,
         message: 'No drifting sessions to monitor',
         interventions_triggered: 0,
-        sessions_checked: 0
+        sessions_checked: activeSessions.length
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200

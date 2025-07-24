@@ -31,8 +31,9 @@ const corsHeaders = {
 const DIFY_API_URL = Deno.env.get('DIFY_API_URL') ?? ''
 // Default to FR23 API key for regular conversations
 const FR23_DIFY_API_KEY = Deno.env.get('FR23_DIFY_API_KEY') || Deno.env.get('DIFY_API_KEY') || ''
-// FR24 API key for drift interventions
+// FR24 API key and URL for drift interventions
 const FR24_DIFY_API_KEY = Deno.env.get('FR24_DIFY_API_KEY') || ''
+const FR24_DIFY_API_URL = Deno.env.get('FR24_DIFY_API_URL') || 'http://164579e467f4.ngrok-free.app/v1'
 
 interface VoiceInteractionMetadata {
   timestamp: string;
@@ -49,10 +50,18 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         env: {
-          DIFY_API_URL: Deno.env.get('DIFY_API_URL') || 'NOT_SET',
-          FR23_DIFY_API_KEY: Deno.env.get('FR23_DIFY_API_KEY') ? 'SET' : 'NOT_SET',
-          hasOpenAI: !!Deno.env.get('OPENAI_API_KEY'),
-          hasElevenLabs: !!Deno.env.get('ELEVENLABS_API_KEY')
+          FR23_CONFIG: {
+            DIFY_API_URL: Deno.env.get('DIFY_API_URL') || 'NOT_SET',
+            FR23_DIFY_API_KEY: Deno.env.get('FR23_DIFY_API_KEY') ? 'SET' : 'NOT_SET',
+          },
+          FR24_CONFIG: {
+            FR24_DIFY_API_URL: Deno.env.get('FR24_DIFY_API_URL') || FR24_DIFY_API_URL,
+            FR24_DIFY_API_KEY: Deno.env.get('FR24_DIFY_API_KEY') ? 'SET' : 'NOT_SET',
+          },
+          EXTERNAL_APIS: {
+            hasOpenAI: !!Deno.env.get('OPENAI_API_KEY'),
+            hasElevenLabs: !!Deno.env.get('ELEVENLABS_API_KEY')
+          }
         },
         timestamp: new Date().toISOString()
       }),
@@ -274,22 +283,92 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // Initialize Supabase client for heartbeat record aggregation
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
+
+    // Function to aggregate heartbeat records for FR2.4
+    async function aggregateHeartbeatRecords(userId: string, sessionId?: string): Promise<string> {
+      try {
+        console.log('🔍 Aggregating heartbeat records for FR2.4:', { userId, sessionId })
+        
+        // Get recent drift events (last 30 minutes or current session)
+        const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000)
+        
+        let query = supabaseClient
+          .from('drift_events')
+          .select('*')
+          .eq('user_id', userId)
+          .gte('created_at', thirtyMinutesAgo.toISOString())
+          .order('created_at', { ascending: true })
+          .limit(50) // Last 50 records to avoid too much data
+        
+        // If we have a session ID, prioritize records from that session
+        if (sessionId) {
+          query = query.eq('session_id', sessionId)
+        }
+        
+        const { data: driftEvents, error } = await query
+        
+        if (error) {
+          console.error('❌ Error fetching drift events:', error)
+          return 'No recent activity data available.'
+        }
+        
+        if (!driftEvents || driftEvents.length === 0) {
+          console.log('⚠️ No drift events found for heartbeat aggregation')
+          return 'No recent activity data available.'
+        }
+        
+        console.log(`✅ Found ${driftEvents.length} drift events for aggregation`)
+        
+        // Format drift events into heartbeat record string
+        const heartbeatRecords = driftEvents.map(event => {
+          const timestamp = new Date(event.created_at).toLocaleString()
+          const status = event.is_drifting ? 'DISTRACTED' : 'FOCUSED'
+          const actualTask = event.actual_task || 'Unknown activity'
+          const reason = event.drift_reason || 'No specific reason provided'
+          const mood = event.user_mood ? ` (Mood: ${event.user_mood})` : ''
+          
+          return `[${timestamp}] ${status}: ${actualTask}${event.is_drifting ? ` - ${reason}` : ''}${mood}`
+        }).join('\n')
+        
+        // Add summary at the beginning
+        const driftCount = driftEvents.filter(e => e.is_drifting).length
+        const focusCount = driftEvents.length - driftCount
+        const summary = `HEARTBEAT SUMMARY: ${driftEvents.length} records analyzed - ${driftCount} distracted, ${focusCount} focused\n\n`
+        
+        const fullRecord = summary + heartbeatRecords
+        console.log('📋 Generated heartbeat record:', fullRecord.substring(0, 200) + '...')
+        
+        return fullRecord
+        
+      } catch (error) {
+        console.error('❌ Error aggregating heartbeat records:', error)
+        return `Error aggregating activity data: ${error instanceof Error ? error.message : 'Unknown error'}`
+      }
+    }
+
     // Step 2: Process with Dify AI chat with conversation context
     console.log('🤖 Calling Dify AI chat with conversation context...')
     
-    // Select the appropriate API key based on context
-    const DIFY_API_KEY = contextType === 'drift_intervention' 
+    // Select the appropriate API key and URL based on context
+    const isDriftIntervention = contextType === 'drift_intervention'
+    const DIFY_API_KEY = isDriftIntervention 
       ? (FR24_DIFY_API_KEY || FR23_DIFY_API_KEY) 
       : FR23_DIFY_API_KEY
+    const SELECTED_API_URL = isDriftIntervention ? FR24_DIFY_API_URL : DIFY_API_URL
     
-    const API_KEY_TYPE = contextType === 'drift_intervention' ? 'FR24' : 'FR23'
+    const API_KEY_TYPE = isDriftIntervention ? 'FR24' : 'FR23'
     
     // Check if Dify API is configured
-    if (!DIFY_API_URL || !DIFY_API_KEY) {
+    if (!SELECTED_API_URL || !DIFY_API_KEY) {
       console.error('❌ Dify API not configured:', { 
-        hasUrl: !!DIFY_API_URL, 
+        hasUrl: !!SELECTED_API_URL, 
         hasKey: !!DIFY_API_KEY,
-        url: DIFY_API_URL || 'missing',
+        url: SELECTED_API_URL || 'missing',
         keyType: API_KEY_TYPE
       })
       throw new Error('Dify API configuration missing')
@@ -297,42 +376,72 @@ Deno.serve(async (req: Request) => {
     
     // Log the environment for debugging
     console.log('🔧 Dify configuration:', {
-      apiUrl: DIFY_API_URL,
+      apiUrl: SELECTED_API_URL,
       hasApiKey: !!DIFY_API_KEY,
       keyEnvVar: `${API_KEY_TYPE}_DIFY_API_KEY`,
       apiKeyLength: DIFY_API_KEY.length,
       apiKeyPrefix: DIFY_API_KEY.substring(0, 10) + '...',
-      fullUrl: `${DIFY_API_URL.replace(/\/$/, '')}/v1/chat-messages`,
+      fullUrl: `${SELECTED_API_URL.replace(/\/$/, '')}/chat-messages`,
       contextType: contextType || 'regular'
     })
 
     // Extract user_id early to use in Dify payload
     const userIdFromForm = formData.get('user_id') as string
     const sessionIdFromForm = formData.get('session_id') as string
+    const effectiveUserId = userIdFromForm || parsedInterventionContext?.userId || 'anonymous'
     
-    // Build user_tasks string with all relevant context
-    let userTasksContent = ''
-    if (contextType === 'drift_intervention') {
-      userTasksContent = `DRIFT INTERVENTION: User has been distracted. Context: ${contextData || 'Help user refocus'}`
-    } else if (currentTask || userGoal) {
-      // For regular conversations, include the user's current task and goal
-      const taskInfo = currentTask ? `Current Task: ${currentTask.title}${currentTask.description ? ` - ${currentTask.description}` : ''}` : ''
-      const goalInfo = userGoal ? `User's Goal: ${userGoal}` : ''
-      userTasksContent = [taskInfo, goalInfo].filter(Boolean).join('\n')
-    }
+    // Build payload based on FR version
+    let difyPayload: any
     
-    const difyPayload: any = {
-      inputs: {
-        user_tasks: userTasksContent,
-        Memory: parsedHistory.length > 0
-          ? parsedHistory.map(turn => 
-              `${turn.role}: ${turn.content}`
-            ).join('\n')
-          : ''
-      },
-      query: userQuery || '',
-      user: userIdFromForm || parsedInterventionContext?.userId || 'anonymous',
-      response_mode: 'streaming'
+    if (isDriftIntervention) {
+      // FR2.4 format for drift interventions
+      console.log('🔄 Building FR2.4 payload for drift intervention')
+      
+      // Aggregate heartbeat records
+      const heartbeatRecord = await aggregateHeartbeatRecords(effectiveUserId, sessionIdFromForm)
+      
+      difyPayload = {
+        inputs: {
+          heartbeat_record: heartbeatRecord,
+          user_goal: userGoal || 'No specific goal set',
+          UUID: effectiveUserId.substring(0, 256) // Ensure max 256 chars
+        },
+        query: userQuery || '1', // Default to "1" to start conversation as per FR2.4 docs
+        user: effectiveUserId,
+        response_mode: 'streaming'
+      }
+      
+      console.log('📤 FR2.4 Payload summary:', {
+        heartbeat_record_length: heartbeatRecord.length,
+        user_goal: userGoal || 'No specific goal set',
+        UUID: effectiveUserId.substring(0, 50) + '...',
+        query: userQuery || '1'
+      })
+      
+    } else {
+      // FR2.3 format for regular conversations
+      console.log('🔄 Building FR2.3 payload for regular conversation')
+      
+      let userTasksContent = ''
+      if (currentTask || userGoal) {
+        const taskInfo = currentTask ? `Current Task: ${currentTask.title}${currentTask.description ? ` - ${currentTask.description}` : ''}` : ''
+        const goalInfo = userGoal ? `User's Goal: ${userGoal}` : ''
+        userTasksContent = [taskInfo, goalInfo].filter(Boolean).join('\n')
+      }
+      
+      difyPayload = {
+        inputs: {
+          user_tasks: userTasksContent,
+          Memory: parsedHistory.length > 0
+            ? parsedHistory.map(turn => 
+                `${turn.role}: ${turn.content}`
+              ).join('\n')
+            : ''
+        },
+        query: userQuery || '',
+        user: effectiveUserId,
+        response_mode: 'streaming'
+      }
     }
     
     // Only include conversation_id if this is not the first turn
@@ -346,20 +455,30 @@ Deno.serve(async (req: Request) => {
       console.log('⚠️ No conversation ID provided by frontend')
     }
 
-    // Remove any trailing slash from DIFY_API_URL
-    const cleanApiUrl = DIFY_API_URL.replace(/\/$/, '')
+    // Remove any trailing slash from selected API URL
+    const cleanApiUrl = SELECTED_API_URL.replace(/\/$/, '')
     
-    // IMPORTANT: Check if the URL already includes /v1
-    const finalUrl = cleanApiUrl.endsWith('/v1/chat-messages') 
-      ? cleanApiUrl 
-      : cleanApiUrl.endsWith('/v1')
-        ? `${cleanApiUrl}/chat-messages`
-        : `${cleanApiUrl}/v1/chat-messages`
+    // Build the final URL based on the API version
+    let finalUrl: string
+    if (isDriftIntervention) {
+      // FR2.4 URL structure: already includes /v1 in base URL
+      finalUrl = cleanApiUrl.endsWith('/chat-messages') 
+        ? cleanApiUrl 
+        : `${cleanApiUrl}/chat-messages`
+    } else {
+      // FR2.3 URL structure: may need /v1 added
+      finalUrl = cleanApiUrl.endsWith('/v1/chat-messages') 
+        ? cleanApiUrl 
+        : cleanApiUrl.endsWith('/v1')
+          ? `${cleanApiUrl}/chat-messages`
+          : `${cleanApiUrl}/v1/chat-messages`
+    }
     
     console.log('📤 Dify API request:', {
       url: finalUrl,
-      originalUrl: DIFY_API_URL,
+      originalUrl: SELECTED_API_URL,
       cleanedUrl: cleanApiUrl,
+      apiVersion: isDriftIntervention ? 'FR2.4' : 'FR2.3',
       hasApiKey: !!DIFY_API_KEY,
       apiKeyPrefix: DIFY_API_KEY.substring(0, 10) + '...',
       payload: JSON.stringify(difyPayload, null, 2),
@@ -386,7 +505,8 @@ Deno.serve(async (req: Request) => {
         status: difyResponse.status,
         statusText: difyResponse.statusText,
         errorBody: errorText,
-        requestUrl: `${cleanApiUrl}/v1/chat-messages`,
+        requestUrl: finalUrl,
+        apiVersion: isDriftIntervention ? 'FR2.4' : 'FR2.3',
         headers: {
           'Authorization': `Bearer ${DIFY_API_KEY.substring(0, 10)}...`,
           'Content-Type': 'application/json'

@@ -895,6 +895,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
           // Update drift reason when entering drift state
           if (newDriftState) {
             setDriftReason(data.drift_reason || 'Focus has drifted from the task');
+            setIsDriftAcknowledged(false); // Reset acknowledgment when new drift is detected
           } else {
             setDriftReason('');
           }
@@ -1723,6 +1724,8 @@ ${sessionEndData.ai_analysis.distraction_analysis}`
         isScreenSharing={isScreenSharing}
         isPassiveListening={isPassiveListening}
         isSpeechDetected={isSpeechDetected}
+        isDrifting={isDrifting}
+        onContinueWorking={handleContinueWorking}
         onToggleMic={toggleMic}
         onToggleVideo={toggleVideo}
         onToggleScreenShare={toggleScreenShare}
@@ -1791,8 +1794,8 @@ ${sessionEndData.ai_analysis.distraction_analysis}`
 
       {/* Drift Notification - Shows after 5 seconds when drifting */}
       <DriftNotification
-        isVisible={isDrifting}
-        onContinueWorking={handleContinueWorking}
+        isVisible={isDrifting && !isDriftAcknowledged}
+        onContinueWorking={() => setIsDriftAcknowledged(true)}
         driftReason={driftReason}
       />
     </>
