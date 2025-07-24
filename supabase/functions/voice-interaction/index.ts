@@ -27,10 +27,12 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-// Dify API configuration for FR-2.3
+// Dify API configuration
 const DIFY_API_URL = Deno.env.get('DIFY_API_URL') ?? ''
-// Try FR23_DIFY_API_KEY first, fallback to generic DIFY_API_KEY
-const DIFY_API_KEY = Deno.env.get('FR23_DIFY_API_KEY') || Deno.env.get('DIFY_API_KEY') || ''
+// Default to FR23 API key for regular conversations
+const FR23_DIFY_API_KEY = Deno.env.get('FR23_DIFY_API_KEY') || Deno.env.get('DIFY_API_KEY') || ''
+// FR24 API key for drift interventions
+const FR24_DIFY_API_KEY = Deno.env.get('FR24_DIFY_API_KEY') || ''
 
 interface VoiceInteractionMetadata {
   timestamp: string;
@@ -228,6 +230,18 @@ Deno.serve(async (req: Request) => {
     // Extract new context information
     const contextType = formData.get('context_type') as string | null
     const contextData = formData.get('context_data') as string | null
+    const currentTaskJson = formData.get('current_task') as string | null
+    const userGoal = formData.get('user_goal') as string | null
+    
+    // Parse current task if available
+    let currentTask = null
+    if (currentTaskJson) {
+      try {
+        currentTask = JSON.parse(currentTaskJson)
+      } catch (e) {
+        console.warn('Failed to parse current task:', e)
+      }
+    }
     
     console.log('=== CONVERSATION CONTEXT ===')
     console.log('User query:', userQuery)
@@ -235,6 +249,8 @@ Deno.serve(async (req: Request) => {
     console.log('Turn number:', turnNumber)
     console.log('Has conversation history:', !!conversationHistory)
     console.log('Is drift intervention:', !!interventionContext)
+    console.log('Current task:', currentTask ? currentTask.title : 'None')
+    console.log('User goal:', userGoal || 'None')
     
     // Parse conversation history for context
     let parsedHistory = []
@@ -261,12 +277,20 @@ Deno.serve(async (req: Request) => {
     // Step 2: Process with Dify AI chat with conversation context
     console.log('🤖 Calling Dify AI chat with conversation context...')
     
+    // Select the appropriate API key based on context
+    const DIFY_API_KEY = contextType === 'drift_intervention' 
+      ? (FR24_DIFY_API_KEY || FR23_DIFY_API_KEY) 
+      : FR23_DIFY_API_KEY
+    
+    const API_KEY_TYPE = contextType === 'drift_intervention' ? 'FR24' : 'FR23'
+    
     // Check if Dify API is configured
     if (!DIFY_API_URL || !DIFY_API_KEY) {
       console.error('❌ Dify API not configured:', { 
         hasUrl: !!DIFY_API_URL, 
         hasKey: !!DIFY_API_KEY,
-        url: DIFY_API_URL || 'missing'
+        url: DIFY_API_URL || 'missing',
+        keyType: API_KEY_TYPE
       })
       throw new Error('Dify API configuration missing')
     }
@@ -275,21 +299,31 @@ Deno.serve(async (req: Request) => {
     console.log('🔧 Dify configuration:', {
       apiUrl: DIFY_API_URL,
       hasApiKey: !!DIFY_API_KEY,
-      keyEnvVar: 'FR23_DIFY_API_KEY',
+      keyEnvVar: `${API_KEY_TYPE}_DIFY_API_KEY`,
       apiKeyLength: DIFY_API_KEY.length,
       apiKeyPrefix: DIFY_API_KEY.substring(0, 10) + '...',
-      fullUrl: `${DIFY_API_URL.replace(/\/$/, '')}/v1/chat-messages`
+      fullUrl: `${DIFY_API_URL.replace(/\/$/, '')}/v1/chat-messages`,
+      contextType: contextType || 'regular'
     })
 
     // Extract user_id early to use in Dify payload
     const userIdFromForm = formData.get('user_id') as string
     const sessionIdFromForm = formData.get('session_id') as string
     
+    // Build user_tasks string with all relevant context
+    let userTasksContent = ''
+    if (contextType === 'drift_intervention') {
+      userTasksContent = `DRIFT INTERVENTION: User has been distracted. Context: ${contextData || 'Help user refocus'}`
+    } else if (currentTask || userGoal) {
+      // For regular conversations, include the user's current task and goal
+      const taskInfo = currentTask ? `Current Task: ${currentTask.title}${currentTask.description ? ` - ${currentTask.description}` : ''}` : ''
+      const goalInfo = userGoal ? `User's Goal: ${userGoal}` : ''
+      userTasksContent = [taskInfo, goalInfo].filter(Boolean).join('\n')
+    }
+    
     const difyPayload: any = {
       inputs: {
-        user_tasks: contextType === 'drift_intervention' 
-          ? `DRIFT INTERVENTION: User has been distracted. Context: ${contextData || 'Help user refocus'}`
-          : '',
+        user_tasks: userTasksContent,
         Memory: parsedHistory.length > 0
           ? parsedHistory.map(turn => 
               `${turn.role}: ${turn.content}`

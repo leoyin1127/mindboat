@@ -1781,6 +1781,12 @@ ${sessionEndData.ai_analysis.distraction_analysis}`
         }}
         message={seagullMessage}
         conversationContext={seagullConversationContext}
+        currentTask={selectedTask ? {
+          id: selectedTask.id,
+          title: selectedTask.title,
+          description: selectedTask.description
+        } : null}
+        userGoal={auth.getCurrentUser()?.guidingStar || null}
       />
 
       {/* Drift Notification - Shows after 5 seconds when drifting */}

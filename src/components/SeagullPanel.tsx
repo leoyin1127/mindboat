@@ -23,6 +23,12 @@ interface SeagullPanelProps {
     userId?: string;
     isDriftIntervention?: boolean;
   } | null;
+  currentTask?: {
+    id: string;
+    title: string;
+    description?: string;
+  } | null;
+  userGoal?: string | null;
 }
 
 export const SeagullPanel: React.FC<SeagullPanelProps> = ({
@@ -30,7 +36,9 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
   onClose,
   message = "Hello Captain! How can I assist you today?",
   isSessionActive = true,
-  conversationContext
+  conversationContext,
+  currentTask,
+  userGoal
 }) => {
   // Existing state
   const [isRecording, setIsRecording] = useState(false);
@@ -550,6 +558,21 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
       } else {
         formData.append('context_type', 'regular_conversation');
         console.log('💬 Marked as regular conversation');
+      }
+      
+      // Include user's current task and goal for Dify context
+      if (currentTask) {
+        formData.append('current_task', JSON.stringify({
+          id: currentTask.id,
+          title: currentTask.title,
+          description: currentTask.description || ''
+        }));
+        console.log('📋 Including current task:', currentTask.title);
+      }
+      
+      if (userGoal) {
+        formData.append('user_goal', userGoal);
+        console.log('🎯 Including user goal:', userGoal);
       }
       
       console.log('🎵 Sending audio for Whisper transcription (no predetermined text)');
