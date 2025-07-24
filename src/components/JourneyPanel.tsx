@@ -1773,6 +1773,7 @@ ${sessionEndData.ai_analysis.distraction_analysis}`
       {/* Seagull Panel - AI Intervention for Deep Drift */}
       <SeagullPanel
         isVisible={showSeagullPanel}
+        isSessionActive={isSessionActive}
         onClose={() => {
           setShowSeagullPanel(false);
           setSeagullMessage('');

@@ -13,7 +13,16 @@
       "mcp__supabase__list_edge_functions",
       "mcp__supabase__get_logs",
       "Bash(npm run build:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(npm run lint)",
+      "Bash(npm run lint:*)",
+      "mcp__supabase__search_docs",
+      "WebFetch(domain:supabase.com)",
+      "Bash(node:*)",
+      "Bash(rm:*)",
+      "Bash(cat:*)",
+      "WebFetch(domain:ivlfsixvfovqitkajyjc.supabase.co)",
+      "Bash(ls:*)"
     ],
     "deny": []
   },

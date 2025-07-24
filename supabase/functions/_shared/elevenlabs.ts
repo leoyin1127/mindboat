@@ -106,9 +106,22 @@ export async function convertTextToSpeech(
         console.log('✅ ElevenLabs TTS successful:', `${audioArrayBuffer.byteLength} bytes`);
 
         // Convert to base64 for easier transmission
-        const audioBase64 = btoa(
-            String.fromCharCode(...new Uint8Array(audioArrayBuffer))
-        );
+        // Use chunked conversion to avoid stack overflow on large audio files
+        const uint8Array = new Uint8Array(audioArrayBuffer);
+        let binaryString = '';
+        const chunkSize = 8192; // Process in 8KB chunks
+        
+        for (let i = 0; i < uint8Array.length; i += chunkSize) {
+            const end = Math.min(i + chunkSize, uint8Array.length);
+            const chunk = uint8Array.subarray(i, end);
+            
+            // Convert chunk to string byte by byte to avoid stack overflow
+            for (let j = 0; j < chunk.length; j++) {
+                binaryString += String.fromCharCode(chunk[j]);
+            }
+        }
+        
+        const audioBase64 = btoa(binaryString);
 
         return {
             success: true,

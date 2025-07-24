@@ -19,6 +19,7 @@ It receives audio from the SeagullPanel, processes it with Dify AI, and returns 
 */
 
 import { convertTextToSpeech, createAudioDataURL } from '../_shared/elevenlabs.ts'
+import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -28,7 +29,8 @@ const corsHeaders = {
 
 // Dify API configuration for FR-2.3
 const DIFY_API_URL = Deno.env.get('DIFY_API_URL') ?? ''
-const DIFY_API_KEY = Deno.env.get('FR23_DIFY_API_KEY') ?? ''
+// Try FR23_DIFY_API_KEY first, fallback to generic DIFY_API_KEY
+const DIFY_API_KEY = Deno.env.get('FR23_DIFY_API_KEY') || Deno.env.get('DIFY_API_KEY') || ''
 
 interface VoiceInteractionMetadata {
   timestamp: string;
@@ -37,18 +39,28 @@ interface VoiceInteractionMetadata {
   duration?: number;
 }
 
-interface DifyStreamResponse {
-  event: string;
-  data: string;
-}
-
-interface DifyAnswerData {
-  answer: string;
-  conversation_id: string;
-  message_id: string;
-}
+// Removed unused interfaces - streaming parsing is handled inline
 
 Deno.serve(async (req: Request) => {
+  // Debug endpoint to check configuration
+  if (req.method === 'GET' && new URL(req.url).pathname.endsWith('/debug')) {
+    return new Response(
+      JSON.stringify({
+        env: {
+          DIFY_API_URL: Deno.env.get('DIFY_API_URL') || 'NOT_SET',
+          FR23_DIFY_API_KEY: Deno.env.get('FR23_DIFY_API_KEY') ? 'SET' : 'NOT_SET',
+          hasOpenAI: !!Deno.env.get('OPENAI_API_KEY'),
+          hasElevenLabs: !!Deno.env.get('ELEVENLABS_API_KEY')
+        },
+        timestamp: new Date().toISOString()
+      }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }
+    )
+  }
+
   try {
     // Handle CORS preflight requests
     if (req.method === 'OPTIONS') {
@@ -169,20 +181,42 @@ Deno.serve(async (req: Request) => {
         
         if (whisperResponse.ok) {
           const whisperResult = await whisperResponse.json()
-          userQuery = whisperResult.text || "I need help staying focused on my task"
-          console.log('✅ Whisper transcription:', userQuery)
+          userQuery = whisperResult.text?.trim() || ''
+          console.log('✅ Whisper transcription:', userQuery || '[empty/unclear speech]')
         } else {
-          console.error('❌ Whisper API error:', whisperResponse.status)
-          userQuery = "I need help staying focused on my task"
+          const errorText = await whisperResponse.text()
+          console.error('❌ Whisper API error:', whisperResponse.status, errorText)
+          // This is a real API error - should be shown to user
+          throw new Error(`Whisper API error ${whisperResponse.status}: ${errorText}`)
         }
       } catch (error) {
         console.error('❌ Whisper API call failed:', error)
-        userQuery = "I need help staying focused on my task"
+        // This is a real error that should be shown to the user
+        return new Response(
+          JSON.stringify({ 
+            error: 'Speech recognition failed',
+            message: error instanceof Error ? error.message : 'Unable to process audio. Please try again.',
+            timestamp: new Date().toISOString(),
+            requiresRetry: true
+          }),
+          {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        )
       }
     }
     
-    if (!userQuery) {
-      userQuery = "I need help staying focused on my task"
+    // Always proceed with whatever we have - let AI handle empty/unclear speech
+    // userQuery could be empty string if no speech was detected - that's fine
+    console.log('📝 Final user query for AI:', userQuery || '[empty speech - letting AI handle]')
+    
+    // Ensure userQuery is a valid string and sanitize it
+    if (typeof userQuery !== 'string') {
+      userQuery = ''
+    } else {
+      // Remove any potential null bytes or control characters that might break JSON
+      userQuery = userQuery.replace(/[\x00-\x1F\x7F-\x9F]/g, '').trim()
     }
 
     // Extract conversation context from FormData
@@ -190,6 +224,10 @@ Deno.serve(async (req: Request) => {
     const turnNumber = parseInt(formData.get('turn_number') as string || '0')
     const conversationHistory = formData.get('conversation_history') as string | null
     const interventionContext = formData.get('intervention_context') as string | null
+    
+    // Extract new context information
+    const contextType = formData.get('context_type') as string | null
+    const contextData = formData.get('context_data') as string | null
     
     console.log('=== CONVERSATION CONTEXT ===')
     console.log('User query:', userQuery)
@@ -222,34 +260,110 @@ Deno.serve(async (req: Request) => {
 
     // Step 2: Process with Dify AI chat with conversation context
     console.log('🤖 Calling Dify AI chat with conversation context...')
+    
+    // Check if Dify API is configured
+    if (!DIFY_API_URL || !DIFY_API_KEY) {
+      console.error('❌ Dify API not configured:', { 
+        hasUrl: !!DIFY_API_URL, 
+        hasKey: !!DIFY_API_KEY,
+        url: DIFY_API_URL || 'missing'
+      })
+      throw new Error('Dify API configuration missing')
+    }
+    
+    // Log the environment for debugging
+    console.log('🔧 Dify configuration:', {
+      apiUrl: DIFY_API_URL,
+      hasApiKey: !!DIFY_API_KEY,
+      keyEnvVar: 'FR23_DIFY_API_KEY',
+      apiKeyLength: DIFY_API_KEY.length,
+      apiKeyPrefix: DIFY_API_KEY.substring(0, 10) + '...',
+      fullUrl: `${DIFY_API_URL.replace(/\/$/, '')}/v1/chat-messages`
+    })
 
-    const difyPayload = {
+    // Extract user_id early to use in Dify payload
+    const userIdFromForm = formData.get('user_id') as string
+    const sessionIdFromForm = formData.get('session_id') as string
+    
+    const difyPayload: any = {
       inputs: {
-        conversation_history: parsedHistory.map(turn => 
-          `${turn.role}: ${turn.content}`
-        ).join('\n') || 'New conversation',
-        turn_number: turnNumber.toString(),
-        user_context: parsedInterventionContext?.type === 'drift_intervention' 
-          ? `Voice conversation with Seagull AI assistant - DRIFT INTERVENTION SESSION after ${parsedInterventionContext.consecutiveDrifts} minutes of drifting`
-          : 'Voice conversation with Seagull AI assistant',
-        session_context: parsedInterventionContext ? JSON.stringify(parsedInterventionContext) : 'Regular conversation'
+        user_tasks: contextType === 'drift_intervention' 
+          ? `DRIFT INTERVENTION: User has been distracted. Context: ${contextData || 'Help user refocus'}`
+          : '',
+        Memory: parsedHistory.length > 0
+          ? parsedHistory.map(turn => 
+              `${turn.role}: ${turn.content}`
+            ).join('\n')
+          : ''
       },
-      query: userQuery,
-      user: `user-${parsedInterventionContext?.userId || crypto.randomUUID()}`,
-      conversation_id: conversationId || '',
+      query: userQuery || '',
+      user: userIdFromForm || parsedInterventionContext?.userId || 'anonymous',
       response_mode: 'streaming'
     }
+    
+    // Only include conversation_id if this is not the first turn
+    // Dify will generate its own conversation_id on the first message
+    if (conversationId && conversationId.trim() !== '' && turnNumber > 0) {
+      difyPayload.conversation_id = conversationId
+      console.log('📝 Using conversation ID for turn', turnNumber, ':', conversationId)
+    } else if (turnNumber === 0) {
+      console.log('🆕 First turn - letting Dify generate conversation ID')
+    } else {
+      console.log('⚠️ No conversation ID provided by frontend')
+    }
 
-    const difyResponse = await fetch(`${DIFY_API_URL}/v1/chat-messages`, {
+    // Remove any trailing slash from DIFY_API_URL
+    const cleanApiUrl = DIFY_API_URL.replace(/\/$/, '')
+    
+    // IMPORTANT: Check if the URL already includes /v1
+    const finalUrl = cleanApiUrl.endsWith('/v1/chat-messages') 
+      ? cleanApiUrl 
+      : cleanApiUrl.endsWith('/v1')
+        ? `${cleanApiUrl}/chat-messages`
+        : `${cleanApiUrl}/v1/chat-messages`
+    
+    console.log('📤 Dify API request:', {
+      url: finalUrl,
+      originalUrl: DIFY_API_URL,
+      cleanedUrl: cleanApiUrl,
+      hasApiKey: !!DIFY_API_KEY,
+      apiKeyPrefix: DIFY_API_KEY.substring(0, 10) + '...',
+      payload: JSON.stringify(difyPayload, null, 2),
+      userQuery: userQuery,
+      userQueryLength: userQuery?.length || 0,
+      hasTranscription: !!userQuery,
+      whisperProcessed: audioFile.size > 0
+    })
+    
+    const difyResponse = await fetch(finalUrl, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${DIFY_API_KEY}`,
         'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true',
+        'User-Agent': 'Supabase-Edge-Function/1.0'
       },
       body: JSON.stringify(difyPayload)
     })
 
     if (!difyResponse.ok) {
+      const errorText = await difyResponse.text()
+      console.error('❌ Dify API error response:', {
+        status: difyResponse.status,
+        statusText: difyResponse.statusText,
+        errorBody: errorText,
+        requestUrl: `${cleanApiUrl}/v1/chat-messages`,
+        headers: {
+          'Authorization': `Bearer ${DIFY_API_KEY.substring(0, 10)}...`,
+          'Content-Type': 'application/json'
+        },
+        payloadSummary: {
+          hasQuery: !!difyPayload.query,
+          queryLength: difyPayload.query?.length || 0,
+          hasConversationId: !!difyPayload.conversation_id,
+          user: difyPayload.user
+        }
+      })
       throw new Error(`Dify API error: ${difyResponse.status} - ${difyResponse.statusText}`)
     }
 
@@ -284,7 +398,7 @@ Deno.serve(async (req: Request) => {
                 // aiAnswer is already accumulated from message events
                 break
               }
-            } catch (parseError) {
+            } catch {
               console.warn('Failed to parse Dify response line:', line)
             }
           }
@@ -298,22 +412,164 @@ Deno.serve(async (req: Request) => {
 
     console.log('✅ Dify AI response:', aiAnswer.substring(0, 100) + '...')
 
-    // Step 4: Convert AI response to speech using ElevenLabs
-    console.log('🔊 Converting response to speech...')
+    // Step 4: Store conversation in database
+    console.log('💾 Storing conversation to database...')
+    
+    // Initialize Supabase client
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
 
-    const ttsResult = await convertTextToSpeech(aiAnswer)
+    // Extract user_id and session_id from intervention context or headers
+    let userId = parsedInterventionContext?.userId || userIdFromForm || req.headers.get('x-user-id')
+    let sessionId = parsedInterventionContext?.sessionId || sessionIdFromForm || req.headers.get('x-session-id')
+    
+    // If still no user ID, this is an error - we need proper user tracking
+    if (!userId) {
+      console.error('❌ No user ID provided - cannot store conversation')
+      return new Response(
+        JSON.stringify({ 
+          error: 'User identification required',
+          message: 'Cannot store conversation without user ID',
+          timestamp: new Date().toISOString()
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      )
+    }
+    
+    // Prepare full conversation history including current turn
+    const fullConversationHistory = [...parsedHistory]
+    
+    // Add current user turn
+    fullConversationHistory.push({
+      role: 'user',
+      content: userQuery,
+      timestamp: new Date().toISOString()
+    })
+    
+    // Add current AI response
+    fullConversationHistory.push({
+      role: 'assistant', 
+      content: aiAnswer,
+      timestamp: new Date().toISOString()
+    })
 
-    if (!ttsResult.success) {
-      console.error('TTS conversion failed:', ttsResult.error)
-      // Continue without audio
+    // Store/update conversation in database using UPSERT strategy
+    // Use the conversation ID provided by frontend (or the one we generated in response)
+    const effectiveConversationId = conversationId || newConversationId
+    
+    try {
+      // If we have a conversation ID, try to update existing record first
+      if (effectiveConversationId) {
+        const { data: existingConversation } = await supabase
+          .from('ai_conversations')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('context->>conversation_id', effectiveConversationId)
+          .single()
+        
+        if (existingConversation) {
+          // Update existing conversation
+          const { error: updateError } = await supabase
+            .from('ai_conversations')
+            .update({
+              messages: fullConversationHistory,
+              context: {
+                conversation_id: effectiveConversationId,
+                turn_number: turnNumber + 1,
+                audio_duration: metadata.duration,
+                audio_size: metadata.audioSize,
+                intervention_context: parsedInterventionContext,
+                whisper_transcription: userQuery !== formData.get('query'),
+                last_updated: new Date().toISOString()
+              }
+            })
+            .eq('id', existingConversation.id)
+          
+          if (updateError) {
+            console.error('❌ Failed to update conversation:', updateError)
+          } else {
+            console.log('✅ Conversation updated successfully')
+          }
+        } else {
+          // Create new conversation record
+          const { error: insertError } = await supabase
+            .from('ai_conversations')
+            .insert({
+              user_id: userId,
+              session_id: sessionId,
+              messages: fullConversationHistory,
+              context: {
+                conversation_id: effectiveConversationId,
+                turn_number: turnNumber + 1,
+                audio_duration: metadata.duration,
+                audio_size: metadata.audioSize,
+                intervention_context: parsedInterventionContext,
+                whisper_transcription: userQuery !== formData.get('query')
+              }
+            })
+          
+          if (insertError) {
+            console.error('❌ Failed to insert conversation:', insertError)
+          } else {
+            console.log('✅ New conversation created successfully')
+          }
+        }
+      } else {
+        // No conversation ID, create new record
+        const { error: insertError } = await supabase
+          .from('ai_conversations')
+          .insert({
+            user_id: userId,
+            session_id: sessionId,
+            messages: fullConversationHistory,
+            context: {
+              conversation_id: crypto.randomUUID(),
+              turn_number: turnNumber + 1,
+              audio_duration: metadata.duration,
+              audio_size: metadata.audioSize,
+              intervention_context: parsedInterventionContext,
+              whisper_transcription: userQuery !== formData.get('query')
+            }
+          })
+        
+        if (insertError) {
+          console.error('❌ Failed to insert new conversation:', insertError)
+        } else {
+          console.log('✅ New conversation created successfully')
+        }
+      }
+    } catch (error) {
+      console.error('❌ Database storage error:', error)
     }
 
-    // Step 5: Prepare final response with conversation context
+    // Step 5: Convert AI response to speech using ElevenLabs
+    console.log('🔊 Converting response to speech...')
+    
+    let ttsResult = { success: false, error: null as string | null, audioData: null as string | null }
+    
+    try {
+      ttsResult = await convertTextToSpeech(aiAnswer)
+      
+      if (!ttsResult.success) {
+        console.error('TTS conversion failed:', ttsResult.error)
+        // Continue without audio
+      }
+    } catch (ttsError) {
+      console.error('TTS conversion error:', ttsError)
+      ttsResult.error = ttsError instanceof Error ? ttsError.message : 'TTS conversion failed'
+    }
+
+    // Step 6: Prepare final response with conversation context
     const processingResult = {
       success: true,
       messageId: messageId || crypto.randomUUID(),
-      conversationId: newConversationId || conversationId || crypto.randomUUID(), // Create new if none provided
-      turnNumber: turnNumber + 1,
+      conversationId: newConversationId || conversationId, // Use Dify's conversation ID if available, otherwise use the one sent by frontend
+      turnNumber: turnNumber + 1, // Return the next turn number for the frontend
       timestamp: new Date().toISOString(),
       audioReceived: {
         size: audioFile.size,
@@ -352,7 +608,10 @@ Deno.serve(async (req: Request) => {
 
   } catch (error) {
     console.error('=== ERROR IN VOICE INTERACTION ===')
-    console.error('Error details:', error)
+    console.error('Error type:', error.constructor.name)
+    console.error('Error message:', error.message)
+    console.error('Error stack:', error.stack)
+    console.error('Full error:', error)
 
     return new Response(
       JSON.stringify({

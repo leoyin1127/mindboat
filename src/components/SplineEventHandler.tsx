@@ -32,6 +32,7 @@ interface SplineEventHandlerProps {
   onEventReceived?: (event: SplineEvent) => void
   onModalStateChange?: (isOpen: boolean) => void
   currentUser?: { id: string; deviceFingerprint: string } | null
+  isSessionActive?: boolean
 }
 
 export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({ 
@@ -326,8 +327,9 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
       {/* Seagull Voice Assistant Panel - Small floating panel */}
       <SeagullPanel
         isVisible={showSeagullPanel}
+        isSessionActive={true} // Default to true for Spline interactions
         onClose={() => setShowSeagullPanel(false)}
-        message={currentEvent?.payload?.seagullMessage}
+        message={currentEvent?.payload?.seagullMessage || "Hello Captain! How can I assist you today?"}
       />
 
       {/* Life Goals Modal */}
