@@ -25,6 +25,7 @@ interface SailingSummaryRequest {
     startTime: string;
     taskTitle: string;
     taskCategory: string;
+    sessionId?: string;
     [key: string]: any;
   };
 }
@@ -32,6 +33,186 @@ interface SailingSummaryRequest {
 interface SailingSummaryResponse {
   imageUrl: string;
   summaryText: string;
+}
+
+// Helper function to collect session data for DIFY workflow
+async function collectSessionData(supabase: any, sessionId: string): Promise<{conversation: string, heartbeat: string, task_motivation: string}> {
+  // Get AI conversations
+  const { data: conversations, error: convError } = await supabase
+    .from('ai_conversations')
+    .select('*')
+    .eq('session_id', sessionId)
+    .order('created_at', { ascending: true });
+
+  // Get drift events (heartbeat logs)
+  const { data: driftEvents, error: driftError } = await supabase
+    .from('drift_events')
+    .select('*')
+    .eq('session_id', sessionId)
+    .order('created_at', { ascending: true });
+
+  // Get task motivation
+  const { data: sessionInfo, error: sessionError } = await supabase
+    .from('sailing_sessions')
+    .select(`
+      *,
+      tasks!inner(title, description, motivation)
+    `)
+    .eq('id', sessionId)
+    .single();
+
+  // Format conversations
+  let conversationText = "No conversations recorded";
+  if (conversations && conversations.length > 0) {
+    conversationText = conversations
+      .map(conv => `${conv.role}: ${conv.message}`)
+      .join('\n');
+  }
+
+  // Format drift events (heartbeat logs)
+  let heartbeatText = "No drift events recorded";
+  if (driftEvents && driftEvents.length > 0) {
+    heartbeatText = driftEvents
+      .map(event => `${new Date(event.created_at).toISOString()}: ${event.is_drifting ? 'DRIFT' : 'FOCUS'} - ${event.description || 'No description'}`)
+      .join('\n');
+  }
+
+  // Format task motivation
+  let taskMotivation = "No task motivation found";
+  if (sessionInfo && !sessionError && sessionInfo.tasks) {
+    const task = sessionInfo.tasks;
+    taskMotivation = `Title: ${task.title || 'Untitled'}\nDescription: ${task.description || 'No description'}\nMotivation: ${task.motivation || 'No motivation provided'}`;
+  }
+
+  return {
+    conversation: conversationText,
+    heartbeat: heartbeatText,
+    task_motivation: taskMotivation
+  };
+}
+
+// Helper function to call DIFY workflow for session summary
+async function generateSessionSummary(sessionData: {conversation: string, heartbeat: string, task_motivation: string}, userId: string): Promise<string> {
+  const difyApiUrl = Deno.env.get('DIFY_API_URL');
+  const difyApiKey = Deno.env.get('FR311_DIFY_API_KEY');
+
+  if (!difyApiUrl || !difyApiKey) {
+    console.warn('DIFY API not configured, using fallback summary');
+    return "Session completed successfully. DIFY workflow not configured for detailed analysis.";
+  }
+
+  try {
+    const workflowUrl = `${difyApiUrl}/v1/workflows/run`;
+    
+    const difyResponse = await fetch(workflowUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${difyApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        inputs: {
+          conversation: sessionData.conversation,
+          heartbeat: sessionData.heartbeat,
+          task_motivation: sessionData.task_motivation
+        },
+        response_mode: "streaming",
+        user: userId
+      })
+    });
+
+    if (difyResponse.ok) {
+      const responseText = await difyResponse.text();
+      console.log('DIFY Raw Response:', responseText);
+      
+      try {
+        // First try parsing as direct JSON
+        const jsonData = JSON.parse(responseText);
+        console.log('DIFY Parsed JSON:', jsonData);
+        
+        if (jsonData.session_conclusion) {
+          console.log('Found session_conclusion:', jsonData.session_conclusion);
+          return jsonData.session_conclusion;
+        }
+        
+        // Fallback to other possible output fields
+        if (jsonData.data?.outputs?.text) {
+          console.log('Found data.outputs.text:', jsonData.data.outputs.text);
+          return jsonData.data.outputs.text;
+        }
+        
+        console.log('No recognized output field found in JSON');
+        return "Session analysis completed, but no summary text was generated.";
+        
+      } catch (directParseError) {
+        console.log('Direct JSON parse failed, trying SSE format...');
+        
+        // Parse SSE format - extract JSON from data: lines
+        const lines = responseText.split('\n');
+        let finalResult = null;
+        let textChunks = []; // Collect text_chunk events
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const jsonData = JSON.parse(line.substring(6)); // Remove "data: " prefix
+              console.log('SSE Event:', jsonData.event, 'Keys:', Object.keys(jsonData));
+              
+              // Collect text_chunk events to build the complete response
+              if (jsonData.event === 'text_chunk' && jsonData.data?.text) {
+                console.log('Found text_chunk:', jsonData.data.text.substring(0, 100) + '...');
+                textChunks.push(jsonData.data.text);
+              }
+              // Look for workflow_finished event with data.outputs
+              else if (jsonData.event === 'workflow_finished' && jsonData.data?.outputs?.session_conclusion) {
+                console.log('Found workflow_finished with session_conclusion');
+                finalResult = jsonData.data.outputs.session_conclusion;
+              }
+              // Look for direct session_conclusion
+              else if (jsonData.session_conclusion) {
+                console.log('Found direct session_conclusion');
+                finalResult = jsonData.session_conclusion;
+              }
+              // Look for node_finished events with outputs.text (like the LLM output)
+              else if (jsonData.event === 'node_finished' && jsonData.data?.outputs?.text) {
+                console.log('Found node_finished with text output');
+                // This might be intermediate output, but save it as fallback
+                if (!finalResult) {
+                  finalResult = jsonData.data.outputs.text;
+                }
+              }
+              // Fallback to other possible output fields
+              else if (jsonData.data?.outputs?.text) {
+                console.log('Found fallback data.outputs.text');
+                if (!finalResult) {
+                  finalResult = jsonData.data.outputs.text;
+                }
+              }
+            } catch (parseError) {
+              // Skip invalid JSON lines
+              continue;
+            }
+          }
+        }
+        
+        // If we collected text chunks, combine them as the final result
+        console.log('Total text chunks collected:', textChunks.length);
+        if (textChunks.length > 0) {
+          console.log('Using combined text_chunks, total chunks:', textChunks.length);
+          finalResult = textChunks.join('');
+        }
+        
+        console.log('Final result length:', finalResult ? finalResult.length : 0);
+        return finalResult || "Session analysis completed, but no summary text was generated.";
+      }
+    } else {
+      console.error('DIFY workflow failed:', await difyResponse.text());
+      return "Session completed. Unable to generate detailed summary at this time.";
+    }
+  } catch (error) {
+    console.error('DIFY workflow error:', error);
+    return "Session completed successfully. Summary generation encountered an error.";
+  }
 }
 
 // Mock data for different task categories
@@ -132,7 +313,7 @@ Deno.serve(async (req: Request) => {
 
     // Extract session data
     const { taskId, sessionData } = requestData
-    const { taskTitle, taskCategory, durationSeconds, focusSeconds, driftSeconds, driftCount, ai_analysis } = sessionData
+    const { taskTitle, taskCategory, durationSeconds, focusSeconds, driftSeconds, driftCount, sessionId } = sessionData
 
     // Calculate actual session duration from real data
     const actualDurationSeconds = Number(durationSeconds) || 0
@@ -151,26 +332,45 @@ Deno.serve(async (req: Request) => {
     console.log('Drift (seconds):', actualDriftSeconds)
     console.log('Drift (minutes):', driftTimeMinutes)
     console.log('Drift count:', actualDriftCount)
+    console.log('Session ID:', sessionId)
 
     // Get category-specific data or default to writing
     const categoryData = mockSummaryData[taskCategory as keyof typeof mockSummaryData] || mockSummaryData.writing
 
-    // Select random image and summary template
+    // Select random image
     const randomImageIndex = Math.floor(Math.random() * categoryData.imageUrls.length)
-    const randomTemplateIndex = Math.floor(Math.random() * categoryData.summaryTemplates.length)
-
     const selectedImageUrl = categoryData.imageUrls[randomImageIndex]
-    const selectedTemplate = categoryData.summaryTemplates[randomTemplateIndex]
 
-    // Replace template variables with actual session data
-    let summaryText = selectedTemplate
-      .replace(/{duration}/g, sessionDurationHours.toFixed(1))
-      .replace(/{task_title}/g, taskTitle)
-      .replace(/{distraction_time}/g, driftTimeMinutes.toString())
-
-    // Add AI analysis insights if available
-    if (ai_analysis && ai_analysis.overall_comment) {
-      summaryText += `\n\n💭 AI Insights: ${ai_analysis.overall_comment}`;
+    // Generate AI-powered summary using DIFY workflow
+    let summaryText = "Your voyage has been completed, but we were unable to generate a detailed summary at this time.";
+    
+    if (sessionId) {
+      console.log('Generating DIFY summary for session:', sessionId);
+      try {
+        // Collect session data for DIFY analysis
+        const collectedData = await collectSessionData(supabase, sessionId);
+        console.log('Collected session data:', collectedData);
+        
+        // Get user ID for DIFY
+        const { data: sessionInfo } = await supabase
+          .from('sailing_sessions')
+          .select('users!inner(id)')
+          .eq('id', sessionId)
+          .single();
+        
+        const userId = sessionInfo?.users?.id || 'anonymous';
+        console.log('User ID for DIFY:', userId);
+        
+        // Generate summary via DIFY workflow
+        summaryText = await generateSessionSummary(collectedData, userId);
+        console.log('DIFY summary generated:', summaryText.substring(0, 200) + '...');
+        
+      } catch (error) {
+        console.error('Error generating DIFY summary:', error);
+        // Keep fallback summary text
+      }
+    } else {
+      console.warn('No sessionId provided, using fallback summary');
     }
 
     // Prepare response
