@@ -31,89 +31,33 @@ interface SessionStats {
   focusPercentage: number;    // percentage of time focused
 }
 
-interface AIAnalysis {
-  summary_title: string;
-  overall_comment: string;
-  distraction_analysis: string;
-  improvement_tips: string[];
+interface DifyWorkflowResponse {
+  task_id: string;
+  workflow_run_id: string;
+  data: {
+    id: string;
+    workflow_id: string;
+    status: string;
+    outputs: {
+      text: string;
+    };
+    error?: string;
+    elapsed_time: number;
+    total_tokens: number;
+    total_steps: number;
+    created_at: number;
+    finished_at: number;
+  };
 }
 
 interface SessionEndResponse {
   success: boolean;
   sessionId: string;
   stats: SessionStats;
-  ai_analysis: AIAnalysis;
+  summary: string;
   error?: string;
 }
 
-// Helper function to call Dify for AI analysis
-async function generateAIAnalysis(sessionData: any): Promise<AIAnalysis> {
-  const difyApiUrl = Deno.env.get('DIFY_API_URL');
-  const difyApiKey = Deno.env.get('DIFY_API_KEY');
-
-  if (!difyApiUrl || !difyApiKey) {
-    console.warn('Dify API not configured, using fallback analysis');
-    return {
-      summary_title: "Session Complete",
-      overall_comment: `You completed a ${Math.round(sessionData.totalDuration / 60)}-minute focus session with ${sessionData.focusPercentage}% focus time.`,
-      distraction_analysis: sessionData.distractionCount > 0 
-        ? `You experienced ${sessionData.distractionCount} distraction periods totaling ${Math.round(sessionData.driftingDuration / 60)} minutes.`
-        : "You maintained excellent focus throughout your session.",
-      improvement_tips: sessionData.focusPercentage < 70 
-        ? ["Try using a timer for shorter focused bursts", "Consider eliminating nearby distractions", "Take short breaks between focus sessions"]
-        : ["Great focus! Keep up this momentum", "Consider extending your session length gradually"]
-    };
-  }
-
-  try {
-    const difyResponse = await fetch(`${difyApiUrl}/v1/completion-messages`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${difyApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        inputs: {
-          session_duration: Math.round(sessionData.totalDuration / 60),
-          focus_percentage: sessionData.focusPercentage,
-          distraction_count: sessionData.distractionCount,
-          drift_time: Math.round(sessionData.driftingDuration / 60),
-          task_title: sessionData.taskTitle || "your task"
-        },
-        response_mode: "blocking",
-        user: sessionData.userId
-      })
-    });
-
-    if (difyResponse.ok) {
-      const difyData = await difyResponse.json();
-      
-      // Parse Dify response - assuming it returns structured analysis
-      const analysis = difyData.answer;
-      
-      return {
-        summary_title: "AI-Generated Session Analysis",
-        overall_comment: analysis.overall_comment || `You completed a ${Math.round(sessionData.totalDuration / 60)}-minute session.`,
-        distraction_analysis: analysis.distraction_analysis || "Session analysis complete.",
-        improvement_tips: analysis.improvement_tips || ["Keep up the great work!"]
-      };
-    }
-  } catch (error) {
-    console.error('Dify API error:', error);
-  }
-
-  // Fallback if Dify fails
-  return {
-    summary_title: "Session Complete",
-    overall_comment: `You completed a ${Math.round(sessionData.totalDuration / 60)}-minute focus session with ${sessionData.focusPercentage}% focus time.`,
-    distraction_analysis: sessionData.distractionCount > 0 
-      ? `You experienced ${sessionData.distractionCount} distraction periods totaling ${Math.round(sessionData.driftingDuration / 60)} minutes.`
-      : "You maintained excellent focus throughout your session.",
-    improvement_tips: sessionData.focusPercentage < 70 
-      ? ["Try shorter focused sessions", "Remove nearby distractions", "Use the Pomodoro technique"]
-      : ["Excellent focus!", "Consider longer sessions", "Keep up this momentum"]
-  };
-}
 
 Deno.serve(async (req: Request) => {
   try {
@@ -264,23 +208,18 @@ Deno.serve(async (req: Request) => {
       userId = sessionInfo.users?.id || 'anonymous';
     }
 
-    // Step 5: Generate AI analysis
-    const ai_analysis = await generateAIAnalysis({
-      ...stats,
-      taskTitle,
-      userId,
-      sessionId
-    });
+    // Step 5: Generate basic session summary (DIFY integration moved to sailing-summary function)
+    const summary = `Session completed successfully. Duration: ${Math.round(totalDuration/60)} minutes, Focus: ${focusPercentage}%`;
 
-    console.log('=== AI ANALYSIS ===');
-    console.log('Analysis:', ai_analysis);
+    console.log('=== SESSION SUMMARY ===');
+    console.log('Summary:', summary);
 
     // Step 6: Prepare response
     const response: SessionEndResponse = {
       success: true,
       sessionId,
       stats,
-      ai_analysis
+      summary
     };
 
     console.log('=== SESSION END RESPONSE ===');
@@ -308,12 +247,7 @@ Deno.serve(async (req: Request) => {
         distractionCount: 0,
         focusPercentage: 0
       },
-      ai_analysis: {
-        summary_title: "Error",
-        overall_comment: "Unable to generate session summary",
-        distraction_analysis: "Session data unavailable",
-        improvement_tips: ["Please try again"]
-      },
+      summary: "Unable to generate session summary due to an error. Please try again.",
       error: error.message
     };
 

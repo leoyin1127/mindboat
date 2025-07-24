@@ -1312,15 +1312,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
 📊 Session Statistics:
 • Duration: ${Math.round(sessionEndData.stats.totalDuration / 60)} minutes
 • Focus Time: ${Math.round(sessionEndData.stats.sailingDuration / 60)} minutes (${sessionEndData.stats.focusPercentage}%)
-• Distractions: ${sessionEndData.stats.distractionCount} events
-
-🤖 AI Analysis:
-${sessionEndData.ai_analysis.overall_comment}
-
-${sessionEndData.ai_analysis.distraction_analysis}
-
-💡 Improvement Tips:
-${sessionEndData.ai_analysis.improvement_tips.map(tip => `• ${tip}`).join('\n')}`;
+• Distractions: ${sessionEndData.stats.distractionCount} events`;
 
         // Set the enhanced summary data
         setSummaryData({
