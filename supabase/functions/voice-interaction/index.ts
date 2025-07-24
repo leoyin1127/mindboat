@@ -402,7 +402,7 @@ Deno.serve(async (req: Request) => {
       
       difyPayload = {
         inputs: {
-          heartbeat_record: heartbeatRecord,
+          heartbeat_log: heartbeatRecord, // Changed from heartbeat_record to heartbeat_log
           user_goal: userGoal || 'No specific goal set',
           UUID: effectiveUserId.substring(0, 256) // Ensure max 256 chars
         },

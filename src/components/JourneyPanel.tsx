@@ -884,25 +884,23 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
 
       console.log('✅ Heartbeat sent successfully:', data);
 
-      // Handle drift state changes (unless user has acknowledged drift)
-      if (!isDriftAcknowledged) {
-        const newDriftState = data.is_drifting;
+      // Handle drift state changes
+      const newDriftState = data.is_drifting;
+      
+      // Only allow transitions TO drift state automatically
+      // Transitions OUT of drift state require manual "Continue Working" action
+      if (newDriftState && !isDrifting) {
+        console.log(`🔄 Drift detected: ${isDrifting} → ${newDriftState}`);
+        setIsDrifting(true);
+        setDriftReason(data.drift_reason || 'Focus has drifted from the task');
+        setIsDriftAcknowledged(false); // Reset acknowledgment when new drift is detected
         
-        if (newDriftState !== isDrifting) {
-          console.log(`🔄 Drift state change: ${isDrifting} → ${newDriftState}`);
-          setIsDrifting(newDriftState);
-          
-          // Update drift reason when entering drift state
-          if (newDriftState) {
-            setDriftReason(data.drift_reason || 'Focus has drifted from the task');
-            setIsDriftAcknowledged(false); // Reset acknowledgment when new drift is detected
-          } else {
-            setDriftReason('');
-          }
-          
-          // Trigger Spline scene change
-          triggerSplineDriftScene(newDriftState);
-        }
+        // Trigger Spline scene change to drift mode
+        triggerSplineDriftScene(true);
+      } else if (!newDriftState && isDrifting) {
+        // AI thinks user is focused but we're in drift mode
+        // Don't automatically exit drift mode - require manual action
+        console.log('🔒 AI detects focus but staying in drift mode until manual exit');
       }
 
       // Log drift status for debugging

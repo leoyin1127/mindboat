@@ -175,7 +175,7 @@ Deno.serve(async (req: Request) => {
         // Step 3: Prepare FR2.4 Dify API payload
         const difyPayload = {
             inputs: {
-                heartbeat_record: heartbeatRecord,
+                heartbeat_log: heartbeatRecord, // Changed from heartbeat_record to heartbeat_log
                 user_goal: userGoal,
                 UUID: user_id.substring(0, 256) // Ensure max 256 chars as per FR2.4 docs
             },
