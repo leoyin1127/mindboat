@@ -430,9 +430,16 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
         isVisible={showSeagullPanel}
         isSessionActive={true} // Default to true for Spline interactions
         onClose={() => setShowSeagullPanel(false)}
-        message={currentEvent?.payload?.seagullMessage || "Hello Captain! How can I assist you today?"}
+        message={currentEvent?.payload?.seagullMessage || currentEvent?.payload?.event_data?.seagullMessage || "Hello Captain! How can I assist you today?"}
         currentTask={activeSessionTask}
         userGoal={currentUser?.guidingStar || null}
+        conversationContext={currentEvent?.payload?.event_data?.isDriftIntervention ? {
+          isDriftIntervention: true,
+          consecutiveDrifts: currentEvent?.payload?.event_data?.consecutiveDrifts || 0,
+          sessionId: currentEvent?.payload?.session_id,
+          userId: currentEvent?.payload?.user_id,
+          type: 'drift_intervention'
+        } : undefined}
       />
       
       {/* Debug logging when Seagull panel is visible */}

@@ -22,7 +22,11 @@
       "Bash(rm:*)",
       "Bash(cat:*)",
       "WebFetch(domain:ivlfsixvfovqitkajyjc.supabase.co)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(supabase functions:*)",
+      "mcp__supabase__get_anon_key",
+      "mcp__supabase__list_extensions",
+      "Bash(npm run:*)"
     ],
     "deny": []
   },

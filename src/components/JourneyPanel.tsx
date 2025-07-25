@@ -967,6 +967,7 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
           `Captain, I've noticed you've been drifting for ${payload.payload?.consecutive_drifts || 5} minutes. Let's get back on course together.`;
 
         // Store conversation context for continuous conversation
+        const currentUser = auth.getCurrentUser();
         const conversationContext = {
           type: 'drift_intervention',
           sessionId: currentSessionId,

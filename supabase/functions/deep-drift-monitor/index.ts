@@ -133,7 +133,43 @@ serve(async (req) => {
       try {
         console.log(`🚨 Triggering intervention for session ${sessionInfo.session_id} (${sessionInfo.consecutive_drifts} consecutive drifts)`)
 
-        // Step 4.1: Call the new drift-intervention function with TTS
+        // Step 4.1: Gather context for FR2.4 drift-intervention call
+        const { data: sessionContext, error: sessionContextError } = await supabase
+          .from('sailing_sessions')
+          .select(`
+            id,
+            user_id,
+            task_id,
+            users (
+              guiding_star
+            ),
+            tasks (
+              title,
+              description
+            )
+          `)
+          .eq('id', sessionInfo.session_id)
+          .single()
+
+        // Get recent drift events for heartbeat record
+        const { data: driftHistory, error: driftHistoryError } = await supabase
+          .from('drift_events')
+          .select('drift_reason, actual_task, created_at, is_drifting')
+          .eq('session_id', sessionInfo.session_id)
+          .order('created_at', { ascending: false })
+          .limit(10)
+
+        const userGoal = sessionContext?.users?.guiding_star || 'No specific goal set'
+        const taskTitle = sessionContext?.tasks?.title || 'General task'
+        
+        // Build drift context for the intervention
+        const driftContext = {
+          last_drift_reason: driftHistory?.[0]?.drift_reason || 'Unknown drift reason',
+          current_task: taskTitle,
+          user_goal: userGoal
+        }
+
+        // Step 4.2: Call the new drift-intervention function with TTS
         const interventionResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/drift-intervention`, {
           method: 'POST',
           headers: {
@@ -144,6 +180,7 @@ serve(async (req) => {
             session_id: sessionInfo.session_id,
             user_id: sessionInfo.user_id,
             consecutive_drifts: sessionInfo.consecutive_drifts,
+            drift_context: driftContext,
             test_mode: false
           })
         })
@@ -157,7 +194,7 @@ serve(async (req) => {
           // Continue with fallback broadcast
         }
 
-        // Step 4.2: Broadcast deep drift detection event on the session's Realtime channel
+        // Step 4.3: Broadcast deep drift detection event on the session's Realtime channel
         const channelName = `session:${sessionInfo.session_id}`
 
         const { error: broadcastError } = await supabase
@@ -183,7 +220,7 @@ serve(async (req) => {
           continue
         }
 
-        // Step 4.3: Trigger Seagull panel by inserting into frontend_events
+        // Step 4.4: Trigger Seagull panel by inserting into frontend_events
         const { error: frontendEventError } = await supabase
           .from('frontend_events')
           .insert({
@@ -209,7 +246,7 @@ serve(async (req) => {
           console.log(`✅ Frontend event inserted to trigger Seagull panel for session ${sessionInfo.session_id}`)
         }
 
-        // Step 4.4: Mark the latest drift event as having triggered an intervention
+        // Step 4.5: Mark the latest drift event as having triggered an intervention
         const { error: updateError } = await supabase
           .from('drift_events')
           .update({ intervention_triggered: true })
