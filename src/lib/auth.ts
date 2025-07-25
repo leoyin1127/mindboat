@@ -219,9 +219,6 @@ class AnonymousAuth {
                 setDeviceCookie(fingerprintToUse)
             }
 
-            // Store user ID in localStorage for other components to access
-            localStorage.setItem('mindboat_user_id', userData.id)
-
             this.isInitialized = true
             return this.currentUser
 
@@ -307,9 +304,6 @@ class AnonymousAuth {
             throw error
         }
 
-        // Store session ID in localStorage for other components to access
-        localStorage.setItem('mindboat_session_id', sessionId)
-
         return sessionId
     }
 
@@ -325,9 +319,6 @@ class AnonymousAuth {
             console.error('Error ending session:', error)
             throw error
         }
-
-        // Clear session ID from localStorage
-        localStorage.removeItem('mindboat_session_id')
 
         // Handle potential type conversion issues (bigint to integer)
         if (sessionSummary && typeof sessionSummary === 'object') {
@@ -365,8 +356,6 @@ class AnonymousAuth {
      */
     async clearAuth(): Promise<void> {
         clearDeviceCookie()
-        localStorage.removeItem('mindboat_user_id')
-        localStorage.removeItem('mindboat_session_id')
         this.currentUser = null
         this.deviceFingerprint = null
         this.isInitialized = false

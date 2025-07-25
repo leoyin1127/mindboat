@@ -27,12 +27,7 @@ const corsHeaders = {
 
 // Dify API configuration
 const DIFY_API_URL = Deno.env.get('DIFY_API_URL') ?? ''
-const DIFY_API_KEY = Deno.env.get('FR12_DIFY_API_KEY') ?? ''
-
-// Ensure the API URL includes the workflow endpoint
-const WORKFLOW_API_URL = DIFY_API_URL.endsWith('/v1/workflows/run') 
-    ? DIFY_API_URL 
-    : `${DIFY_API_URL}${DIFY_API_URL.endsWith('/') ? '' : '/'}v1/workflows/run`
+const DIFY_API_KEY = Deno.env.get('DIFY_API_KEY') ?? ''
 
 interface ProcessVoiceRequest {
     transcript: string
@@ -143,10 +138,7 @@ Deno.serve(async (req) => {
 
         console.log('Dify payload:', JSON.stringify(difyPayload, null, 2))
 
-        console.log('Dify API URL:', WORKFLOW_API_URL)
-        console.log('Dify API Key exists:', !!DIFY_API_KEY)
-        
-        const difyResponse = await fetch(WORKFLOW_API_URL, {
+        const difyResponse = await fetch(DIFY_API_URL, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${DIFY_API_KEY}`,
@@ -162,30 +154,15 @@ Deno.serve(async (req) => {
             console.error('❌ DIFY API FAILED:', {
                 status: difyResponse.status,
                 statusText: difyResponse.statusText,
-                body: errorText.substring(0, 500), // Limit log output
+                body: errorText,
                 url: DIFY_API_URL
             })
 
             // Continue with fallback - difyResult stays null
             console.log('🔄 Using fallback task creation...')
         } else {
-            // Check content type before parsing JSON
-            const contentType = difyResponse.headers.get('content-type')
-            console.log('Response content-type:', contentType)
-            
-            if (contentType && contentType.includes('application/json')) {
-                difyResult = await difyResponse.json()
-                console.log('✅ DIFY API SUCCESS:', JSON.stringify(difyResult, null, 2))
-            } else {
-                // Response is not JSON, likely HTML error page
-                const responseText = await difyResponse.text()
-                console.error('❌ DIFY API returned non-JSON response:', {
-                    contentType,
-                    body: responseText.substring(0, 500),
-                    url: WORKFLOW_API_URL
-                })
-                console.log('🔄 Using fallback task creation...')
-            }
+            difyResult = await difyResponse.json()
+            console.log('✅ DIFY API SUCCESS:', JSON.stringify(difyResult, null, 2))
         }
 
         // Step 3: Parse Dify response and extract tasks

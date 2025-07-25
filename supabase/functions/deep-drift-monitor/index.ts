@@ -34,22 +34,21 @@ serve(async (req) => {
 
     console.log('🔍 Starting deep drift monitoring check...')
 
-    // Step 1: Find all active sessions that have recent drift events
-    // First get active sessions
-    const { data: activeSessions, error: sessionError } = await supabase
+    // Step 1: Find all sessions currently in 'drifting' state
+    const { data: driftingSessions, error: sessionError } = await supabase
       .from('sailing_sessions')
       .select('id, user_id, state')
-      .eq('state', 'active')
+      .eq('state', 'drifting')
 
     if (sessionError) {
-      throw new Error(`Error fetching active sessions: ${sessionError.message}`)
+      throw new Error(`Error fetching drifting sessions: ${sessionError.message}`)
     }
 
-    if (!activeSessions || activeSessions.length === 0) {
-      console.log('✅ No active sessions found')
+    if (!driftingSessions || driftingSessions.length === 0) {
+      console.log('✅ No drifting sessions found - all users are focused!')
       return new Response(JSON.stringify({
         success: true,
-        message: 'No active sessions to monitor',
+        message: 'No drifting sessions to monitor',
         interventions_triggered: 0,
         sessions_checked: 0
       }), {
@@ -58,14 +57,13 @@ serve(async (req) => {
       })
     }
 
-    // Check all active sessions for drift events
-    console.log(`📊 Checking ${activeSessions.length} active sessions for drift events`)
+    console.log(`📊 Found ${driftingSessions.length} drifting sessions to check`)
 
     let interventionsTriggered = 0
     const sessionsToCheck: DriftSession[] = []
 
-    // Step 2: For each active session, check for drift events
-    for (const session of activeSessions) {
+    // Step 2: For each drifting session, check consecutive drift count
+    for (const session of driftingSessions) {
       // Get the last 5 drift events for this session, ordered by most recent first
       const { data: recentDrifts, error: driftError } = await supabase
         .from('drift_events')
@@ -97,33 +95,19 @@ serve(async (req) => {
       console.log(`Session ${session.id}: ${consecutiveDrifts} consecutive drifts`)
 
       // Step 3: Check if intervention should be triggered
-      // Check if there's already an active Seagull panel for this session
-      const { data: existingEvent, error: eventError } = await supabase
-        .from('frontend_events')
-        .select('id, created_at')
-        .eq('user_id', session.user_id)
-        .eq('event_name', 'show_seagull_modal')
-        .gte('created_at', new Date(Date.now() - 5 * 60 * 1000).toISOString()) // Last 5 minutes
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single()
-      
-      if (!eventError && existingEvent) {
-        console.log(`Session ${session.id}: Seagull intervention already active (triggered ${existingEvent.created_at})`)
-        continue // Skip this session - intervention already active
-      }
-      
-      // Look for ANY drift event that hasn't triggered an intervention yet
-      for (const drift of recentDrifts) {
-        if (drift.is_drifting && !drift.intervention_triggered) {
-          console.log(`Session ${session.id}: Found untriggered drift event ${drift.id}`)
+      if (consecutiveDrifts >= 1) {
+        const latestDrift = recentDrifts[0] // Most recent drift event
+
+        // Only trigger if the latest drift hasn't already triggered an intervention
+        if (!latestDrift.intervention_triggered) {
           sessionsToCheck.push({
             session_id: session.id,
             user_id: session.user_id,
             consecutive_drifts: consecutiveDrifts,
-            latest_drift_id: drift.id
+            latest_drift_id: latestDrift.id
           })
-          break // Only trigger one intervention per session per run
+        } else {
+          console.log(`Session ${session.id}: intervention already triggered for latest drift`)
         }
       }
     }
@@ -133,43 +117,7 @@ serve(async (req) => {
       try {
         console.log(`🚨 Triggering intervention for session ${sessionInfo.session_id} (${sessionInfo.consecutive_drifts} consecutive drifts)`)
 
-        // Step 4.1: Gather context for FR2.4 drift-intervention call
-        const { data: sessionContext, error: sessionContextError } = await supabase
-          .from('sailing_sessions')
-          .select(`
-            id,
-            user_id,
-            task_id,
-            users (
-              guiding_star
-            ),
-            tasks (
-              title,
-              description
-            )
-          `)
-          .eq('id', sessionInfo.session_id)
-          .single()
-
-        // Get recent drift events for heartbeat record
-        const { data: driftHistory, error: driftHistoryError } = await supabase
-          .from('drift_events')
-          .select('drift_reason, actual_task, created_at, is_drifting')
-          .eq('session_id', sessionInfo.session_id)
-          .order('created_at', { ascending: false })
-          .limit(10)
-
-        const userGoal = sessionContext?.users?.guiding_star || 'No specific goal set'
-        const taskTitle = sessionContext?.tasks?.title || 'General task'
-        
-        // Build drift context for the intervention
-        const driftContext = {
-          last_drift_reason: driftHistory?.[0]?.drift_reason || 'Unknown drift reason',
-          current_task: taskTitle,
-          user_goal: userGoal
-        }
-
-        // Step 4.2: Call the new drift-intervention function with TTS
+        // Step 4.1: Call the new drift-intervention function with TTS
         const interventionResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/drift-intervention`, {
           method: 'POST',
           headers: {
@@ -180,7 +128,6 @@ serve(async (req) => {
             session_id: sessionInfo.session_id,
             user_id: sessionInfo.user_id,
             consecutive_drifts: sessionInfo.consecutive_drifts,
-            drift_context: driftContext,
             test_mode: false
           })
         })
@@ -194,7 +141,7 @@ serve(async (req) => {
           // Continue with fallback broadcast
         }
 
-        // Step 4.3: Broadcast deep drift detection event on the session's Realtime channel
+        // Step 4.2: Broadcast deep drift detection event on the session's Realtime channel
         const channelName = `session:${sessionInfo.session_id}`
 
         const { error: broadcastError } = await supabase
@@ -220,33 +167,7 @@ serve(async (req) => {
           continue
         }
 
-        // Step 4.4: Trigger Seagull panel by inserting into frontend_events
-        const { error: frontendEventError } = await supabase
-          .from('frontend_events')
-          .insert({
-            user_id: sessionInfo.user_id,
-            event_name: 'show_seagull_modal',
-            event_data: {
-              modalType: 'seagull',
-              seagullMessage: interventionData?.intervention_message ||
-                `Captain, I've noticed you've been drifting for ${sessionInfo.consecutive_drifts} minutes. Let's get back on course together.`,
-              isDriftIntervention: true,
-              consecutiveDrifts: sessionInfo.consecutive_drifts,
-              audio_url: interventionData?.audio_url || null,
-              audio_data: interventionData?.audio_data || null,
-              tts_success: interventionData?.tts_success || false,
-              source: 'deep-drift-monitor'
-            }
-          })
-
-        if (frontendEventError) {
-          console.error(`Error inserting frontend event for session ${sessionInfo.session_id}:`, frontendEventError)
-          // Continue with the process even if frontend event insertion fails
-        } else {
-          console.log(`✅ Frontend event inserted to trigger Seagull panel for session ${sessionInfo.session_id}`)
-        }
-
-        // Step 4.5: Mark the latest drift event as having triggered an intervention
+        // Step 4.3: Mark the latest drift event as having triggered an intervention
         const { error: updateError } = await supabase
           .from('drift_events')
           .update({ intervention_triggered: true })
@@ -269,7 +190,7 @@ serve(async (req) => {
       success: true,
       message: `Deep drift monitoring completed. ${interventionsTriggered} interventions triggered.`,
       interventions_triggered: interventionsTriggered,
-      sessions_checked: activeSessions.length
+      sessions_checked: driftingSessions.length
     }
 
     console.log('✅ Deep drift monitoring completed:', response)

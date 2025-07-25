@@ -51,9 +51,9 @@ export const usePassiveListening = ({
     }
 
     try {
-      // console.log('💾 Storing speech to database:', transcript.substring(0, 50) + '...');
-      // console.log('🔍 Session ID:', activeSessionId);
-      // console.log('🔍 Transcript length:', transcript.length);
+      console.log('💾 Storing speech to database:', transcript.substring(0, 50) + '...');
+      console.log('🔍 Session ID:', activeSessionId);
+      console.log('🔍 Transcript length:', transcript.length);
       
       const payload = {
         session_id: activeSessionId,
@@ -62,7 +62,7 @@ export const usePassiveListening = ({
         interim: false
       };
       
-      // console.log('📤 Sending payload:', payload);
+      console.log('📤 Sending payload:', payload);
       
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/log-passive-speech`, {
         method: 'POST',
@@ -77,7 +77,7 @@ export const usePassiveListening = ({
 
       if (response.ok) {
         const result = await response.json();
-        // console.log('✅ Speech stored successfully in SailingLog table:', result.event_id);
+        console.log('✅ Speech stored successfully in SailingLog table:', result.event_id);
       } else {
         const errorText = await response.text();
         console.error('❌ Failed to store speech:', response.status, response.statusText);
@@ -111,7 +111,7 @@ export const usePassiveListening = ({
     recognition.maxAlternatives = 1;
 
     recognition.onstart = () => {
-      // console.log('🎤 Passive speech recognition started');
+      console.log('🎤 Passive speech recognition started');
     };
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
@@ -130,8 +130,8 @@ export const usePassiveListening = ({
       // Update the UI with current speech (interim + final)
       if (finalTranscript.trim() || interimTranscript.trim()) {
         setPassiveTranscript(prev => prev + finalTranscript);
-        // console.log('🎤 Speech detected:', 
-        //   finalTranscript.trim() ? `Final: "${finalTranscript.trim()}"` : `Interim: "${interimTranscript.trim()}"`);
+        console.log('🎤 Speech detected:', 
+          finalTranscript.trim() ? `Final: "${finalTranscript.trim()}"` : `Interim: "${interimTranscript.trim()}"`);
         
         // Indicate speech is being detected
         setIsSpeechDetected(true);

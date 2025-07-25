@@ -13,7 +13,6 @@ interface SeagullPanelProps {
   isVisible: boolean;
   onClose?: () => void;
   message?: string;
-  isSessionActive?: boolean;
   conversationContext?: {
     type?: string;
     sessionId?: string;
@@ -23,22 +22,13 @@ interface SeagullPanelProps {
     userId?: string;
     isDriftIntervention?: boolean;
   } | null;
-  currentTask?: {
-    id: string;
-    title: string;
-    description?: string;
-  } | null;
-  userGoal?: string | null;
 }
 
 export const SeagullPanel: React.FC<SeagullPanelProps> = ({
   isVisible,
   onClose,
-  message = "Hello Captain! How can I assist you today?",
-  isSessionActive = true,
-  conversationContext,
-  currentTask,
-  userGoal
+  message = "Captain, it seems we've veered off course. Let me check on our current situation.",
+  conversationContext
 }) => {
   // Existing state
   const [isRecording, setIsRecording] = useState(false);
@@ -51,9 +41,7 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
   const [currentTurnNumber, setCurrentTurnNumber] = useState(0);
   const [isPlayingTTS, setIsPlayingTTS] = useState(false);
   const [isWaitingForUser, setIsWaitingForUser] = useState(false);
-  const [isProcessingSpeech, setIsProcessingSpeech] = useState(false);
   const [autoRestartEnabled, setAutoRestartEnabled] = useState(true);
-  const [isConversationEnded, setIsConversationEnded] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -62,46 +50,12 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
   const streamRef = useRef<MediaStream | null>(null);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const conversationTimeoutRef = useRef<number | null>(null);
-  const isMountedRef = useRef<boolean>(true);
-  const isStoppingRef = useRef<boolean>(false);
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const conversationIdRef = useRef<string | null>(null);
-  const currentTurnNumberRef = useRef<number>(0);
-  const initialMessageRef = useRef<string>(message);
 
-  // Update ref whenever turn number changes
-  useEffect(() => {
-    currentTurnNumberRef.current = currentTurnNumber;
-  }, [currentTurnNumber]);
 
   // Auto-start voice interaction when panel becomes visible
   useEffect(() => {
-    if (isVisible && !isMountedRef.current) {
-      // This is a new panel opening
-      isMountedRef.current = true;
-      
-      // Reset conversation ended flag and stopping flag for new conversation
-      setIsConversationEnded(false);
-      isStoppingRef.current = false;
-      
-      // Generate or use existing conversation ID
-      let effectiveConversationId = conversationContext?.conversationId || conversationId;
-      if (!effectiveConversationId) {
-        // Generate new conversation ID for this session
-        effectiveConversationId = crypto.randomUUID();
-        setConversationId(effectiveConversationId);
-        conversationIdRef.current = effectiveConversationId;
-        console.log('🆔 Generated new conversation ID:', effectiveConversationId);
-      } else {
-        setConversationId(effectiveConversationId);
-        conversationIdRef.current = effectiveConversationId;
-        console.log('🔄 Using existing conversation ID:', effectiveConversationId);
-      }
-      
+    if (isVisible) {
       // Add initial AI message as first turn
-      // Store the current message for this conversation
-      initialMessageRef.current = message;
-      
       const initialTurn: ConversationTurn = {
         id: crypto.randomUUID(),
         role: 'assistant',
@@ -110,22 +64,16 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
       };
       
       setConversationTurns([initialTurn]);
-      setCurrentTurnNumber(0); // Start at 0 since this is the initial AI message
-      currentTurnNumberRef.current = 0; // Sync ref immediately
+      setCurrentTurnNumber(1);
       setIsWaitingForUser(true);
       
       // Start voice interaction
       startVoiceInteraction();
-    } else if (!isVisible && isMountedRef.current) {
-      // Panel is closing
-      isMountedRef.current = false;
-      
+    } else {
       // Cleanup conversation state
       setConversationId(null);
-      conversationIdRef.current = null;
       setConversationTurns([]);
       setCurrentTurnNumber(0);
-      currentTurnNumberRef.current = 0; // Reset ref as well
       setIsPlayingTTS(false);
       setIsWaitingForUser(false);
       
@@ -143,51 +91,22 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
     }
 
     return () => {
-      // Mark as unmounted and stopping immediately
-      isMountedRef.current = false;
-      isStoppingRef.current = true;
-      
-      // Abort all ongoing requests immediately
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-        abortControllerRef.current = null;
-      }
-      
-      // Clear timeout immediately
-      if (conversationTimeoutRef.current) {
-        window.clearTimeout(conversationTimeoutRef.current);
-        conversationTimeoutRef.current = null;
-      }
-      
-      // Cleanup audio
+      // Cleanup on unmount
       if (currentAudioRef.current) {
         currentAudioRef.current.pause();
         currentAudioRef.current = null;
       }
       
-      // Clear MediaRecorder event handlers before stopping
-      if (mediaRecorderRef.current) {
-        mediaRecorderRef.current.ondataavailable = null;
-        mediaRecorderRef.current.onstop = null;
-        mediaRecorderRef.current.onerror = null;
+      if (conversationTimeoutRef.current) {
+        clearTimeout(conversationTimeoutRef.current);
+        conversationTimeoutRef.current = null;
       }
       
       stopVoiceInteraction();
     };
-  }, [isVisible]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Only depend on isVisible to prevent cleanup on message changes
+  }, [isVisible, message]);
 
-  const startVoiceInteraction = async (preserveConversation = false) => {
-    // Don't start if conversation has been ended or stopping
-    if (isConversationEnded || isStoppingRef.current) {
-      console.log('🚫 Conversation ended or stopping - not starting voice interaction');
-      return;
-    }
-    
-    // Reset stopping flag and create new abort controller
-    isStoppingRef.current = false;
-    abortControllerRef.current = new AbortController();
-    
+  const startVoiceInteraction = async () => {
     try {
       setConnectionStatus('connecting');
 
@@ -224,25 +143,14 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
-          // Only process chunks if component is still mounted and not stopping
-          if (isMountedRef.current && !isConversationEnded && !isStoppingRef.current) {
-            audioChunks.push(event.data);
+          audioChunks.push(event.data);
 
-            // Send audio chunk to backend for real-time processing
-            sendAudioChunk(event.data);
-          } else {
-            console.log('🚫 Ignoring audio chunk - component unmounted, conversation ended, or stopping');
-          }
+          // Send audio chunk to backend for real-time processing
+          sendAudioChunk(event.data);
         }
       };
 
       mediaRecorder.onstop = () => {
-        // Check if conversation has been ended - don't process final audio
-        if (isConversationEnded) {
-          console.log('🚫 Conversation ended - skipping final audio processing');
-          return;
-        }
-        
         // Final audio blob when recording stops
         const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
         sendFinalAudio(audioBlob);
@@ -255,11 +163,6 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
 
       // Start audio level monitoring
       monitorAudioLevel();
-      
-      // Start conversation timeout
-      startConversationTimeout();
-      
-      console.log('🎤 Voice interaction started successfully');
 
     } catch (error) {
       console.error('Error starting voice interaction:', error);
@@ -272,71 +175,34 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
   };
 
   const stopVoiceInteraction = () => {
-    console.log('🛑 Stopping voice interaction - cleaning up all resources');
-    
-    // Set stopping flag immediately
-    isStoppingRef.current = true;
-    
-    // Stop recording immediately
-    if (mediaRecorderRef.current) {
-      if (mediaRecorderRef.current.state === 'recording') {
-        // Remove all event listeners before stopping
-        mediaRecorderRef.current.ondataavailable = null;
-        mediaRecorderRef.current.onstop = null;
-        mediaRecorderRef.current.onerror = null;
-        
-        try {
-          mediaRecorderRef.current.stop();
-        } catch (e) {
-          console.warn('Error stopping MediaRecorder:', e);
-        }
-      }
-      mediaRecorderRef.current = null;
+    // Stop recording
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
     }
-    setIsRecording(false);
 
-    // Abort all ongoing fetch requests
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
-    
     // Stop audio analysis
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
     }
 
     // Close audio context only if it's not already closed
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
       audioContextRef.current.close();
     }
-    audioContextRef.current = null;
-    analyserRef.current = null;
 
     // Stop media stream
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => {
-        track.stop();
-        console.log('🎤 Stopped media track:', track.kind);
-      });
-      streamRef.current = null;
+      streamRef.current.getTracks().forEach(track => track.stop());
     }
 
     setAudioLevel(0);
     setConnectionStatus('connecting');
-    setIsWaitingForUser(false);
   };
 
   const handleStopConversation = () => {
-    console.log('🛑 Manually stopping conversation - ending completely');
-    
-    // Mark conversation as ended to prevent any further processing
-    setIsConversationEnded(true);
+    console.log('🛑 Manually stopping conversation');
     setAutoRestartEnabled(false);
-    setIsWaitingForUser(false);
-    setIsProcessingSpeech(false);
-    setIsPlayingTTS(false);
     
     // Stop any playing audio
     if (currentAudioRef.current) {
@@ -350,17 +216,9 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
     // Clear timeouts
     if (conversationTimeoutRef.current) {
       clearTimeout(conversationTimeoutRef.current);
-      conversationTimeoutRef.current = null;
     }
 
-    // Clear conversation state
-    setConversationId(null);
-    conversationIdRef.current = null;
-    setConversationTurns([]);
-    setCurrentTurnNumber(0);
-    currentTurnNumberRef.current = 0; // Reset ref as well
-
-    // Close the panel immediately
+    // Close the panel
     onClose?.();
   };
   
@@ -392,15 +250,6 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
   };
 
   const sendAudioChunk = async (audioData: Blob) => {
-    // Don't send chunks if component is unmounted, conversation ended, or stopping
-    if (!isMountedRef.current || isConversationEnded || isStoppingRef.current) {
-      console.log('🚫 Skipping audio chunk send - component unmounted, conversation ended, or stopping');
-      return;
-    }
-    
-    // Reset conversation timeout on activity
-    resetConversationTimeout();
-    
     try {
       const formData = new FormData();
       formData.append('audio', audioData, 'audio-chunk.webm');
@@ -412,8 +261,7 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
         headers: {
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
-        body: formData,
-        signal: abortControllerRef.current?.signal
+        body: formData
       });
 
       if (!response.ok) {
@@ -450,41 +298,20 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
     console.log('🔄 TTS completed, checking for auto-restart...');
     setIsPlayingTTS(false);
     
-    // Don't restart if conversation has been ended
-    if (isConversationEnded) {
-      console.log('🚫 Conversation ended - not restarting');
-      return;
-    }
-    
-    // Check current visibility and session state to prevent stale restarts
-    if (autoRestartEnabled && isVisible && isSessionActive && onClose) {
+    if (autoRestartEnabled && isVisible) {
       // Wait a moment then restart listening
       setTimeout(() => {
-        // Double-check all conditions again after timeout including ended flag
-        if (autoRestartEnabled && isVisible && isSessionActive && !isConversationEnded) {
-          console.log('🎤 Auto-restarting voice listening for continued conversation');
-          setIsWaitingForUser(true);
-          startVoiceInteraction(true); // Preserve conversation state
-          resetConversationTimeout();
-        } else {
-          console.log('🚫 Auto-restart cancelled - panel closed, session ended, or conversation ended');
-        }
+        console.log('🎤 Auto-restarting voice listening for continued conversation');
+        setIsWaitingForUser(true);
+        startVoiceInteraction();
+        resetConversationTimeout();
       }, 1500); // 1.5 second delay after TTS ends
-    } else {
-      console.log('🚫 Auto-restart disabled, panel not visible, or session inactive');
     }
   };
 
   const sendFinalAudio = async (audioBlob: Blob) => {
-    // Don't process if conversation has been ended
-    if (isConversationEnded) {
-      console.log('🚫 Conversation ended - not processing final audio');
-      return;
-    }
-    
     try {
       setIsWaitingForUser(false);
-      setIsProcessingSpeech(true);
       
       // Create user turn from audio
       const userTurn: ConversationTurn = {
@@ -508,36 +335,11 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
       formData.append('timestamp', new Date().toISOString());
       formData.append('type', 'final');
       
-      // Include conversation context and user identification
-      // Use the conversation ID we generated when the panel opened
-      const effectiveConversationId = conversationIdRef.current || conversationId || conversationContext?.conversationId;
-      if (!effectiveConversationId) {
-        console.error('❌ No conversation ID available - this should not happen');
-        console.error('conversationIdRef.current:', conversationIdRef.current);
-        console.error('conversationId state:', conversationId);
-        console.error('conversationContext?.conversationId:', conversationContext?.conversationId);
-        setIsProcessingSpeech(false);
-        return;
-      }
-      
+      // Include conversation context
+      const effectiveConversationId = conversationId || conversationContext?.conversationId || '';
       formData.append('conversation_id', effectiveConversationId);
-      formData.append('turn_number', currentTurnNumberRef.current.toString());
+      formData.append('turn_number', currentTurnNumber.toString());
       formData.append('conversation_history', JSON.stringify(conversationTurns));
-      
-      // Always include user and session information
-      const userId = conversationContext?.userId || localStorage.getItem('mindboat_user_id') || '';
-      const sessionId = conversationContext?.sessionId || localStorage.getItem('mindboat_session_id') || '';
-      
-      if (!userId) {
-        console.error('❌ No user ID available - cannot send voice interaction');
-        setIsProcessingSpeech(false);
-        return;
-      }
-      
-      formData.append('user_id', userId);
-      if (sessionId) {
-        formData.append('session_id', sessionId);
-      }
       
       // Include drift intervention context if available
       if (conversationContext?.isDriftIntervention) {
@@ -549,94 +351,41 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
         }));
       }
       
-      // Include context information but let Whisper transcribe all audio
-      // Only add context flag for drift interventions, not predetermined text
-      if (conversationContext?.isDriftIntervention) {
-        formData.append('context_type', 'drift_intervention');
-        formData.append('context_data', `consecutive_drifts:${conversationContext.consecutiveDrifts || 5}`);
-        console.log('🔄 Marked as drift intervention context');
-      } else {
-        formData.append('context_type', 'regular_conversation');
-        console.log('💬 Marked as regular conversation');
+      // Add appropriate query based on context
+      let queryText = 'Continue our conversation';
+      if (currentTurnNumber === 1) {
+        queryText = conversationContext?.isDriftIntervention 
+          ? `I've been distracted and need help getting back on track after ${conversationContext.consecutiveDrifts || 5} minutes of drifting`
+          : 'I need help staying focused on my current task';
       }
       
-      // Include user's current task and goal for Dify context
-      if (currentTask) {
-        formData.append('current_task', JSON.stringify({
-          id: currentTask.id,
-          title: currentTask.title,
-          description: currentTask.description || ''
-        }));
-        console.log('📋 Including current task:', currentTask.title);
-      }
-      
-      if (userGoal) {
-        formData.append('user_goal', userGoal);
-        console.log('🎯 Including user goal:', userGoal);
-      }
-      
-      console.log('🎵 Sending audio for Whisper transcription (no predetermined text)');
-      // Always use Whisper for all turns - no hardcoded queries
+      formData.append('query', queryText);
 
-      console.log(`🗣️ Sending turn ${currentTurnNumberRef.current} of conversation`, {
-        turnNumber: currentTurnNumberRef.current,
-        conversationId: effectiveConversationId || 'new',
-        hasConversationHistory: conversationTurns.length > 0,
-        historyLength: conversationTurns.length
-      });
+      console.log(`🗣️ Sending turn ${currentTurnNumber} of conversation (ID: ${conversationId || 'new'})`);
 
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/voice-interaction`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
-        body: formData,
-        signal: abortControllerRef.current?.signal
+        body: formData
       });
 
-      // Parse the response (could be success or error)
-      const result = await response.json();
-      console.log('📨 Voice interaction response:', result);
-
-      // Handle speech recognition errors
-      if (!response.ok || result.error) {
-        console.error('❌ Voice interaction failed:', result.message || response.statusText);
-        setIsProcessingSpeech(false);
-        
-        // Update user turn to show error
-        setConversationTurns(prev => 
-          prev.map(turn => 
-            turn.id === userTurn.id 
-              ? { ...turn, content: `[Speech not recognized: ${result.message || 'Please try again'}]` }
-              : turn
-          )
-        );
-        
-        // If it's a retry-able error, restart listening
-        if (result.requiresRetry && autoRestartEnabled && isVisible && isSessionActive) {
-          setTimeout(() => {
-            console.log('🔄 Retrying speech recognition...');
-            setIsWaitingForUser(true);
-            startVoiceInteraction();
-          }, 2000);
-        }
+      if (!response.ok) {
+        console.error('Failed to send final audio:', response.statusText);
         return;
       }
 
+      // Parse the AI response with TTS audio
+      const result = await response.json();
+      console.log('✅ Voice interaction response:', result);
+
       if (result.success && result.aiResponse) {
-        setIsProcessingSpeech(false);
-        
-        // Update conversation ID if backend returns a different one (e.g., Dify generated ID)
-        if (result.conversationId && result.conversationId !== effectiveConversationId) {
-          console.warn('⚠️ Backend returned different conversation ID:', {
-            sent: effectiveConversationId,
-            received: result.conversationId
-          });
-          // Update to use Dify's conversation ID for future turns
-          conversationIdRef.current = result.conversationId;
-          setConversationId(result.conversationId);
-        } else {
-          console.log('✅ Conversation ID confirmed:', effectiveConversationId);
+        // Update conversation ID if received (prioritize from context for drift interventions)
+        const newConversationId = result.conversationId || conversationContext?.conversationId;
+        if (newConversationId && !conversationId) {
+          setConversationId(newConversationId);
+          console.log('💬 Conversation ID established:', newConversationId, conversationContext?.isDriftIntervention ? '(drift intervention)' : '(new conversation)');
         }
         
         // Update user turn with transcription if available
@@ -661,9 +410,7 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
         
         // Add AI turn to conversation
         setConversationTurns(prev => [...prev, aiTurn]);
-        // Increment turn number after each complete exchange
         setCurrentTurnNumber(prev => prev + 1);
-        currentTurnNumberRef.current = currentTurnNumberRef.current + 1;
         
         console.log('🤖 AI Response:', result.aiResponse.text);
 
@@ -701,16 +448,10 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
     } catch (error) {
       console.error('Error sending final audio:', error);
       setIsPlayingTTS(false);
-      setIsWaitingForUser(false);
-      setIsProcessingSpeech(false);
-      
-      // Only restart on error if auto-restart is enabled, panel is visible, and session is active
-      if (autoRestartEnabled && isVisible && isSessionActive) {
-        console.log('⚠️ Restarting conversation after error...');
+      // Try to restart conversation even on error
+      if (autoRestartEnabled && isVisible) {
         setTimeout(() => {
-          if (autoRestartEnabled && isVisible && isSessionActive) {
-            startVoiceInteraction();
-          }
+          startVoiceInteraction();
         }, 2000);
       }
     }
@@ -719,7 +460,6 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
   // Determine current conversation state message
   const getConversationStateMessage = () => {
     if (isPlayingTTS) return 'Speaking...';
-    if (isProcessingSpeech) return 'Processing speech...';
     if (isRecording) return 'Listening...';
     if (isWaitingForUser) return 'Ready to listen';
     if (connectionStatus === 'connecting') return 'Connecting...';
@@ -729,7 +469,6 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
 
   const getConversationStateColor = () => {
     if (isPlayingTTS) return 'text-blue-300';
-    if (isProcessingSpeech) return 'text-purple-300';
     if (isRecording) return 'text-green-300';
     if (isWaitingForUser) return 'text-yellow-300';
     if (connectionStatus === 'error') return 'text-red-300';
@@ -821,7 +560,7 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
           <div className="flex-1 min-w-0">
             {/* Current message */}
             <p className="text-white/90 font-inter text-sm leading-relaxed italic truncate mb-1">
-              "{conversationTurns.length > 0 ? conversationTurns[conversationTurns.length - 1].content : initialMessageRef.current}"
+              "{conversationTurns.length > 0 ? conversationTurns[conversationTurns.length - 1].content : message}"
             </p>
             
             {/* Conversation state */}
@@ -868,61 +607,6 @@ export const SeagullPanel: React.FC<SeagullPanelProps> = ({
                 );
               })}
             </div>
-
-            {/* Manual stop & send button - only show when actively recording */}
-            {isRecording && !isConversationEnded && (
-              <button
-                onClick={() => {
-                  console.log('✋ Manual stop & send button clicked');
-                  // Stop the recording and let onstop handle sending
-                  if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-                    mediaRecorderRef.current.stop();
-                  }
-                }}
-                className="w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 
-                           backdrop-blur-md border border-white/25 shadow-lg relative overflow-hidden group
-                           bg-gradient-to-br from-red-500/20 via-red-400/15 to-red-300/10
-                           hover:from-red-500/30 hover:via-red-400/25 hover:to-red-300/15 
-                           hover:border-red-400/35 mr-2"
-                title="Stop recording and send message"
-              >
-                {/* Button inner glow */}
-                <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-white/10 to-white/5 
-                                opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-
-                {/* Stop icon */}
-                <div className="w-3 h-3 bg-red-400 rounded-sm group-hover:bg-red-300 relative z-10 transition-colors duration-300"></div>
-              </button>
-            )}
-
-            {/* Manual continue button - only show when auto-restart is disabled and not currently active */}
-            {!autoRestartEnabled && !isRecording && !isPlayingTTS && !isWaitingForUser && !isConversationEnded && conversationTurns.length > 1 && (
-              <button
-                onClick={() => {
-                  if (isSessionActive) {
-                    console.log('👆 Manual continue button clicked');
-                    setIsWaitingForUser(true);
-                    startVoiceInteraction();
-                    resetConversationTimeout();
-                  } else {
-                    console.log('🚫 Cannot continue - session is not active');
-                  }
-                }}
-                className="w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 
-                           backdrop-blur-md border border-white/25 shadow-lg relative overflow-hidden group
-                           bg-gradient-to-br from-white/15 via-white/10 to-white/8
-                           hover:from-blue-500/20 hover:via-blue-400/15 hover:to-blue-300/10 
-                           hover:border-blue-400/35 mr-2"
-                title="Continue conversation (click to speak)"
-              >
-                {/* Button inner glow */}
-                <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-white/10 to-white/5 
-                                opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-
-                {/* Continue icon */}
-                <Mic className="w-4 h-4 text-white/80 group-hover:text-blue-300 relative z-10 transition-colors duration-300" />
-              </button>
-            )}
 
             {/* Close conversation button - enhanced with state */}
             <button

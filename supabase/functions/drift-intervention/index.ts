@@ -29,8 +29,8 @@ const corsHeaders = {
 }
 
 // Dify API configuration for FR-2.4
-const FR24_DIFY_API_URL = Deno.env.get('FR24_DIFY_API_URL') || 'http://164579e467f4.ngrok-free.app/v1'
-const FR24_DIFY_API_KEY = Deno.env.get('FR24_DIFY_API_KEY') ?? ''
+const DIFY_API_URL = Deno.env.get('DIFY_API_URL') ?? ''
+const DIFY_API_KEY = Deno.env.get('FR24_DIFY_API_KEY') ?? ''
 
 interface DriftInterventionRequest {
     session_id: string
@@ -172,41 +172,30 @@ Deno.serve(async (req: Request) => {
             `${drift.created_at}: ${drift.drift_reason} (doing: ${drift.actual_task})`
         ).join('\n') || 'No recent drift history'
 
-        // Step 3: Prepare FR2.4 Dify API payload
+        // Step 3: Prepare Dify API payload
         const difyPayload = {
             inputs: {
-                heartbeat_record: heartbeatRecord, // Correct field name per FR2.4 docs
+                heartbeat_record: heartbeatRecord,
                 user_goal: userGoal,
-                UUID: user_id.substring(0, 256) // Ensure max 256 chars as per FR2.4 docs
+                sailing_log: `Session duration: ${sessionDuration} minutes. Task: ${taskTitle}. Consecutive drifts: ${consecutive_drifts}`,
+                personality: 'Caring, supportive, and motivational sailing captain persona',
+                UUID: user_id,
+                task_list: `Current task: ${taskTitle}${taskDescription ? ` - ${taskDescription}` : ''}`
             },
             query: `I was distracted while working just now and it took some effort to bring me back on track. I've been drifting for ${consecutive_drifts} minutes consecutively.`,
-            user: user_id,
+            user: `user-${user_id}`,
+            conversation_id: '',
             response_mode: 'streaming'
         }
 
-        // Check if FR2.4 API is configured
-        if (!FR24_DIFY_API_KEY) {
-            console.error('❌ FR24_DIFY_API_KEY not configured')
-            return new Response(
-                JSON.stringify({ error: 'FR2.4 API key not configured' }),
-                {
-                    status: 500,
-                    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-                }
-            )
-        }
-
-        console.log('🤖 Calling FR2.4 Dify AI for drift intervention...')
+        console.log('🤖 Calling Dify AI for drift intervention...')
         console.log('Dify payload:', JSON.stringify(difyPayload, null, 2))
 
-        // Step 4: Call FR2.4 Dify API
-        const apiUrl = `${FR24_DIFY_API_URL.replace(/\/$/, '')}/chat-messages`
-        console.log('🔗 Calling FR2.4 API:', apiUrl)
-        
-        const difyResponse = await fetch(apiUrl, {
+        // Step 4: Call Dify API
+        const difyResponse = await fetch(`${DIFY_API_URL}/v1/chat-messages`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${FR24_DIFY_API_KEY}`,
+                'Authorization': `Bearer ${DIFY_API_KEY}`,
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify(difyPayload)

@@ -884,23 +884,24 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
 
       console.log('✅ Heartbeat sent successfully:', data);
 
-      // Handle drift state changes
-      const newDriftState = data.is_drifting;
-      
-      // Only allow transitions TO drift state automatically
-      // Transitions OUT of drift state require manual "Continue Working" action
-      if (newDriftState && !isDrifting) {
-        console.log(`🔄 Drift detected: ${isDrifting} → ${newDriftState}`);
-        setIsDrifting(true);
-        setDriftReason(data.drift_reason || 'Focus has drifted from the task');
-        setIsDriftAcknowledged(false); // Reset acknowledgment when new drift is detected
+      // Handle drift state changes (unless user has acknowledged drift)
+      if (!isDriftAcknowledged) {
+        const newDriftState = data.is_drifting;
         
-        // Trigger Spline scene change to drift mode
-        triggerSplineDriftScene(true);
-      } else if (!newDriftState && isDrifting) {
-        // AI thinks user is focused but we're in drift mode
-        // Don't automatically exit drift mode - require manual action
-        console.log('🔒 AI detects focus but staying in drift mode until manual exit');
+        if (newDriftState !== isDrifting) {
+          console.log(`🔄 Drift state change: ${isDrifting} → ${newDriftState}`);
+          setIsDrifting(newDriftState);
+          
+          // Update drift reason when entering drift state
+          if (newDriftState) {
+            setDriftReason(data.drift_reason || 'Focus has drifted from the task');
+          } else {
+            setDriftReason('');
+          }
+          
+          // Trigger Spline scene change
+          triggerSplineDriftScene(newDriftState);
+        }
       }
 
       // Log drift status for debugging
@@ -967,7 +968,6 @@ export const JourneyPanel: React.FC<JourneyPanelProps> = ({
           `Captain, I've noticed you've been drifting for ${payload.payload?.consecutive_drifts || 5} minutes. Let's get back on course together.`;
 
         // Store conversation context for continuous conversation
-        const currentUser = auth.getCurrentUser();
         const conversationContext = {
           type: 'drift_intervention',
           sessionId: currentSessionId,
@@ -1715,8 +1715,6 @@ ${sessionEndData.ai_analysis.distraction_analysis}`
         isScreenSharing={isScreenSharing}
         isPassiveListening={isPassiveListening}
         isSpeechDetected={isSpeechDetected}
-        isDrifting={isDrifting}
-        onContinueWorking={handleContinueWorking}
         onToggleMic={toggleMic}
         onToggleVideo={toggleVideo}
         onToggleScreenShare={toggleScreenShare}
@@ -1767,7 +1765,6 @@ ${sessionEndData.ai_analysis.distraction_analysis}`
       {/* Seagull Panel - AI Intervention for Deep Drift */}
       <SeagullPanel
         isVisible={showSeagullPanel}
-        isSessionActive={isSessionActive}
         onClose={() => {
           setShowSeagullPanel(false);
           setSeagullMessage('');
@@ -1775,18 +1772,12 @@ ${sessionEndData.ai_analysis.distraction_analysis}`
         }}
         message={seagullMessage}
         conversationContext={seagullConversationContext}
-        currentTask={selectedTask ? {
-          id: selectedTask.id,
-          title: selectedTask.title,
-          description: selectedTask.description
-        } : null}
-        userGoal={auth.getCurrentUser()?.guidingStar || null}
       />
 
       {/* Drift Notification - Shows after 5 seconds when drifting */}
       <DriftNotification
-        isVisible={isDrifting && !isDriftAcknowledged}
-        onContinueWorking={() => setIsDriftAcknowledged(true)}
+        isVisible={isDrifting}
+        onContinueWorking={handleContinueWorking}
         driftReason={driftReason}
       />
     </>
