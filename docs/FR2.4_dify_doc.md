@@ -22,6 +22,16 @@ Authorization: Bearer {API_KEY}
 
 ---
 
+### **输入变量 (`inputs`) 详情**
+
+| 变量名 | 类型 | 变量说明 | 备注 |
+| --- | --- | --- | --- |
+| `heartbeat_record` | 段落 | 用于输入心跳记录的长文本。 | 串成一大段一起发（所有分心+回溯一次不分心的记录）
+对应dify里面heartbeat_log |
+| `user_goal` | 文本 | 用户的目标。 | 对应dify里面的memory |
+| `UUID` | 文本 | 用户的唯一标识符，最大长度为 256。（） | 这个dify里面不用接入，是防止你的id乱掉的 |
+| query | 段落 | 用户的问题 | ，初始默认发“1”启动对话 |
+
 ## Send Chat Message
 
 `POST` `/chat-messages`

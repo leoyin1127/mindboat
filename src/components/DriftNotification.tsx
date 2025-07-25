@@ -36,11 +36,8 @@ export function DriftNotification({
   if (!shouldRender) return null;
 
   return (
-    <div className={`fixed inset-0 z-50 flex items-center justify-center p-6 ${shouldRender ? 'opacity-100' : 'opacity-0'} transition-opacity duration-300 ease-in-out`}>
-      {/* Background overlay */}
-      <div className="absolute inset-0 bg-black/20 backdrop-blur-sm"></div>
-      
-      {/* Notification content */}
+    <div className={`fixed top-20 left-1/2 transform -translate-x-1/2 z-50 ${shouldRender ? 'opacity-100' : 'opacity-0'} transition-opacity duration-300 ease-in-out`}>
+      {/* Notification content - no background overlay */}
       <div className={`relative w-full max-w-md p-6 rounded-2xl shadow-xl backdrop-blur-md ${getPanelStyle('md', true)} border border-amber-400/30 transform transition-all duration-300 ease-in-out ${shouldRender ? 'scale-100 translate-y-0' : 'scale-95 translate-y-4'}`}>
         <div className="flex items-start space-x-3">
           <div className="flex-shrink-0">
@@ -57,9 +54,9 @@ export function DriftNotification({
             </p>
             <button
               onClick={onContinueWorking}
-              className={`w-full ${getButtonStyle('accent', 'md')} text-sm font-medium transition-all duration-200 hover:scale-105`}
+              className={`w-full ${getButtonStyle('default', 'sm')} text-sm font-medium transition-all duration-200 hover:scale-105`}
             >
-              Continue Working
+              I understand
             </button>
           </div>
         </div>

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import * as auth from '../lib/auth'
 import { X, Sparkles, Compass, Target, Heart, MessageCircle } from 'lucide-react'
 import { LifeGoalsModal } from './LifeGoalsModal'
 import { WelcomePanel } from './WelcomePanel'
@@ -32,6 +33,7 @@ interface SplineEventHandlerProps {
   onEventReceived?: (event: SplineEvent) => void
   onModalStateChange?: (isOpen: boolean) => void
   currentUser?: { id: string; deviceFingerprint: string } | null
+  isSessionActive?: boolean
 }
 
 export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({ 
@@ -45,6 +47,106 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
   const [showWelcomePanel, setShowWelcomePanel] = useState(false)
   const [showJourneyPanel, setShowJourneyPanel] = useState(false)
   const [showSeagullPanel, setShowSeagullPanel] = useState(false)
+  const [activeSessionTask, setActiveSessionTask] = useState<any>(null)
+
+  // Fetch active session and task when user is available
+  useEffect(() => {
+    const fetchActiveSessionTask = async () => {
+      if (!currentUser?.id) {
+        console.log('🚫 No user ID available for fetching active session task')
+        return
+      }
+
+      console.log('🔍 Fetching active session task for user:', currentUser.id)
+
+      try {
+        // First, get the active sailing session for the user
+        const { data: activeSession, error: sessionError } = await supabase
+          .from('sailing_sessions')
+          .select('id, task_id')
+          .eq('user_id', currentUser.id)
+          .eq('state', 'active')
+          .single()
+
+        console.log('🔍 Active session query result:', { activeSession, sessionError })
+
+        if (sessionError || !activeSession?.task_id) {
+          console.log('⚠️ No active session with task found:', { 
+            error: sessionError?.message, 
+            hasSession: !!activeSession,
+            hasTaskId: !!activeSession?.task_id
+          })
+          setActiveSessionTask(null)
+          return
+        }
+
+        // Then fetch the task details
+        const { data: task, error: taskError } = await supabase
+          .from('tasks')
+          .select('id, title, description')
+          .eq('id', activeSession.task_id)
+          .single()
+
+        if (taskError || !task) {
+          console.log('⚠️ Could not fetch task details:', taskError?.message)
+          setActiveSessionTask(null)
+          return
+        }
+
+        console.log('✅ Active session task found:', task)
+        setActiveSessionTask(task)
+      } catch (error) {
+        console.error('❌ Error fetching active session task:', error)
+        setActiveSessionTask(null)
+      }
+    }
+
+    fetchActiveSessionTask()
+  }, [currentUser?.id])
+
+  // Re-fetch active session task when Seagull panel is shown
+  useEffect(() => {
+    if (showSeagullPanel && currentUser?.id) {
+      const fetchActiveSessionTask = async () => {
+        try {
+          // First, get the active sailing session for the user
+          const { data: activeSession, error: sessionError } = await supabase
+            .from('sailing_sessions')
+            .select('id, task_id')
+            .eq('user_id', currentUser.id)
+            .eq('state', 'active')
+            .single()
+
+          if (sessionError || !activeSession?.task_id) {
+            console.log('No active session with task found when opening Seagull')
+            setActiveSessionTask(null)
+            return
+          }
+
+          // Then fetch the task details
+          const { data: task, error: taskError } = await supabase
+            .from('tasks')
+            .select('id, title, description')
+            .eq('id', activeSession.task_id)
+            .single()
+
+          if (taskError || !task) {
+            console.log('Could not fetch task details when opening Seagull')
+            setActiveSessionTask(null)
+            return
+          }
+
+          console.log('Active session task updated for Seagull:', task)
+          setActiveSessionTask(task)
+        } catch (error) {
+          console.error('Error re-fetching active session task:', error)
+          setActiveSessionTask(null)
+        }
+      }
+
+      fetchActiveSessionTask()
+    }
+  }, [showSeagullPanel, currentUser?.id])
 
   // Notify parent component of modal state changes
   useEffect(() => {
@@ -326,9 +428,28 @@ export const SplineEventHandler: React.FC<SplineEventHandlerProps> = ({
       {/* Seagull Voice Assistant Panel - Small floating panel */}
       <SeagullPanel
         isVisible={showSeagullPanel}
+        isSessionActive={true} // Default to true for Spline interactions
         onClose={() => setShowSeagullPanel(false)}
-        message={currentEvent?.payload?.seagullMessage}
+        message={currentEvent?.payload?.seagullMessage || currentEvent?.payload?.event_data?.seagullMessage || "Hello Captain! How can I assist you today?"}
+        currentTask={activeSessionTask}
+        userGoal={currentUser?.guidingStar || null}
+        conversationContext={currentEvent?.payload?.event_data?.isDriftIntervention ? {
+          isDriftIntervention: true,
+          consecutiveDrifts: currentEvent?.payload?.event_data?.consecutiveDrifts || 0,
+          sessionId: currentEvent?.payload?.session_id,
+          userId: currentEvent?.payload?.user_id,
+          type: 'drift_intervention'
+        } : undefined}
       />
+      
+      {/* Debug logging when Seagull panel is visible */}
+      {showSeagullPanel && (
+        console.log('🐦 SeagullPanel props:', {
+          currentTask: activeSessionTask,
+          userGoal: currentUser?.guidingStar,
+          userId: currentUser?.id
+        }) as any
+      )}
 
       {/* Life Goals Modal */}
       <LifeGoalsModal
